@@ -13,6 +13,7 @@ odc = "^0.1.0"
 seaborn = "^0.13.2"
 momepy = "^0.9.0"
 rtree = "^1.3.0"
+osmnx = "^2.0.0"
 
 [build-system]
 requires = ["poetry-core"]
