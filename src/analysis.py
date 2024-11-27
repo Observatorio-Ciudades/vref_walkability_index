@@ -7,6 +7,7 @@ from shapely.geometry import LineString, Point, Polygon
 import momepy
 import numpy as np
 from scipy.spatial import Voronoi
+import pandas as pd
 
 
 def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, buff:int):
@@ -339,3 +340,38 @@ def assing_blocks_attribute_to_voronoi(blocks:gpd.GeoDataFrame, voronoi:gpd.GeoD
     voronoi[attribute_column] = voronoi[attribute_column].astype(int)
 
     return voronoi
+
+
+def network_from_tessellation(gdf):
+    # gdf preprocessing
+    gdf = gdf.copy()
+    gdf = gdf.dissolve().explode().reset_index() # eliminate overlaping polygons and multipolygon
+    # create tessellation
+    limit = momepy.buffered_limit(gdf, buffer=50)
+    tess_gdf = momepy.morphological_tessellation(gdf, clip=limit)
+    # polygons to lines
+    lines_gdf = gpd.GeoDataFrame(geometry=tess_gdf.geometry.boundary)
+    # separate lines by intersection
+    lines_single = gpd.GeoDataFrame(geometry=lines_gdf.dissolve().geometry.map(lambda x: sh.ops.linemerge(x)).explode())
+    lines_single = lines_single.set_crs("EPSG:32613")
+    lines_single = lines_single.reset_index(drop=True)
+    lines_single = lines_single.reset_index()
+    # extract first and last vertices from lines
+    point_geo = [Point(lines_single.iloc[i].geometry.coords[0]) for i in range(len(lines_single))]
+    point_geo.extend([Point(lines_single.iloc[i].geometry.coords[-1]) for i in range(len(lines_single))])
+    # remove duplicates
+    point_geo_filter = set(point_geo)
+    point_geo_filter = list(point_geo_filter)
+    # create gdf from point geometries
+    nodes_gdf = pd.DataFrame(point_geo_filter)
+    nodes_gdf = nodes_gdf.rename(columns={0:'geometry'})
+    nodes_gdf = nodes_gdf.set_geometry('geometry')
+    nodes_gdf = nodes_gdf.set_crs("EPSG:32613")
+    # create first network and graph
+    nodes, edges = network_entities(nodes_gdf, lines_single, crs="EPSG:32613")
+    G = ox.graph_from_gdfs(nodes, edges)
+    # consolidate graph
+    G2 = ox.consolidate_intersections(G, rebuild_graph=True, tolerance=10, dead_ends=True)
+    nodes, edges = ox.graph_to_gdfs(G2)
+
+    return nodes, edges
