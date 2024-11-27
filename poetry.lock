@@ -1641,6 +1641,35 @@ files = [
 ]
 
 [[package]]
+name = "libpysal"
+version = "4.12.1"
+description = "Core components of PySAL - A library of spatial analysis functions"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "libpysal-4.12.1-py3-none-any.whl", hash = "sha256:ce89d3c9aa944a7df052545ae37a5c802d707c672e04a76f7b1ee93f781110a9"},
+    {file = "libpysal-4.12.1.tar.gz", hash = "sha256:f4eda82d8f78d36ee0f95c5576b335f05d94513ac65b4976c3218b09bb0a1bb0"},
+]
+
+[package.dependencies]
+beautifulsoup4 = ">=4.10"
+geopandas = ">=0.10.0"
+numpy = ">=1.22"
+packaging = ">=22"
+pandas = ">=1.4"
+platformdirs = ">=2.0.2"
+requests = ">=2.27"
+scikit-learn = ">=1.1"
+scipy = ">=1.8"
+shapely = ">=2.0.1"
+
+[package.extras]
+dev = ["pre-commit", "ruff", "watermark"]
+docs = ["myst-parser", "nbsphinx", "numpydoc", "pandoc", "sphinx", "sphinx-bootstrap-theme", "sphinxcontrib-bibtex"]
+plus = ["joblib (>=1.2)", "networkx (>=2.7)", "numba (>=0.55)", "pyarrow (>=7.0)", "sqlalchemy (>=2.0)", "xarray (>=2022.3)", "zstd"]
+tests = ["codecov", "geodatasets (>=2023.3.0)", "matplotlib (>=3.6)", "pytest", "pytest-cov", "pytest-mpl", "pytest-xdist"]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.2"
 description = "Safely add untrusted strings to HTML/XML markup."
@@ -1797,6 +1826,29 @@ files = [
     {file = "mistune-3.0.2-py3-none-any.whl", hash = "sha256:71481854c30fdbc938963d3605b72501f5c10a9320ecd412c121c163a1c7d205"},
     {file = "mistune-3.0.2.tar.gz", hash = "sha256:fc7f93ded930c92394ef2cb6f04a8aabab4117a91449e72dcc8dfa646a508be8"},
 ]
+
+[[package]]
+name = "momepy"
+version = "0.9.0"
+description = "Urban Morphology Measuring Toolkit"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "momepy-0.9.0-py3-none-any.whl", hash = "sha256:74d20ce88257dcf1e654997427694dc6dd9eb64ed66a372116df1e20d03b6adf"},
+    {file = "momepy-0.9.0.tar.gz", hash = "sha256:98e78b42febd823c9b2e9ca71c0223be53d29524800040b93b0e64a567824800"},
+]
+
+[package.dependencies]
+geopandas = ">=0.12.0"
+libpysal = ">=4.12.0"
+networkx = ">=2.8"
+packaging = "*"
+pandas = ">=1.5.1"
+shapely = ">=2"
+tqdm = ">=4.63.0"
+
+[package.extras]
+plus = ["esda", "inequality", "mapclassify", "numba"]
 
 [[package]]
 name = "nbclient"
@@ -3265,6 +3317,25 @@ files = [
 ]
 
 [[package]]
+name = "rtree"
+version = "1.3.0"
+description = "R-Tree spatial index for Python GIS"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "Rtree-1.3.0-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:80879d9db282a2273ca3a0d896c84583940e9777477727a277624ebfd424c517"},
+    {file = "Rtree-1.3.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:4328e9e421797c347e6eb08efbbade962fe3664ebd60c1dffe82c40911b1e125"},
+    {file = "Rtree-1.3.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:037130d3ce1fc029de81941ec416ba5546f66228380ba19bb41f2ea1294e8423"},
+    {file = "Rtree-1.3.0-py3-none-manylinux2014_i686.manylinux_2_17_i686.whl", hash = "sha256:864a05d0c3b7ce6c5e34378b7ab630057603b79179368bc50624258bdf2ff631"},
+    {file = "Rtree-1.3.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ec2ed6d1635753dab966e68f592a9c4896f3f4ec6ad2b09b776d592eacd883a9"},
+    {file = "Rtree-1.3.0-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:b4485fb3e5c5e85b94a95f0a930a3848e040d2699cfb012940ba5b0130f1e09a"},
+    {file = "Rtree-1.3.0-py3-none-musllinux_1_2_i686.whl", hash = "sha256:7e2e9211f4fb404c06a08fd2cbebb03234214f73c51913bb371c3d9954e99cc9"},
+    {file = "Rtree-1.3.0-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:c021f4772b25cc24915da8073e553ded6fa8d0b317caa4202255ed26b2344c1c"},
+    {file = "Rtree-1.3.0-py3-none-win_amd64.whl", hash = "sha256:97f835801d24c10bbf02381abe5e327345c8296ec711dde7658792376abafc66"},
+    {file = "rtree-1.3.0.tar.gz", hash = "sha256:b36e9dd2dc60ffe3d02e367242d2c26f7281b00e1aaf0c39590442edaaadd916"},
+]
+
+[[package]]
 name = "scikit-learn"
 version = "1.5.2"
 description = "A set of python modules for machine learning and data mining"
@@ -3865,4 +3936,4 @@ test = ["websockets"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "6e4a4303f717b26b8586882c4592e72313f66b1b4116ff6f2eb9abe0ff700b5b"
+content-hash = "e92e76f627ede9a8900dbca949e36c6e13af83024b504e0c0b09660ffa909eb3"
