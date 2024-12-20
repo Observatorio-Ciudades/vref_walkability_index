@@ -51,45 +51,48 @@ def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edg
 
 
 def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:32618'):
-	"""
-	Create a network based on nodes and edges without unique ids and to - from attributes.
+    """
+    Create a network based on nodes and edges without unique ids and to - from attributes.
 
-	Args:
-		nodes (gpd.GeoDataFrame): GeoDataFrame with nodes for network in EPSG:4326
-		edges (gpd.GeoDataFrame): GeoDataFrame with edges for network in EPSG:4326
+    Args:
+        nodes (gpd.GeoDataFrame): GeoDataFrame with nodes for network in EPSG:4326
+        edges (gpd.GeoDataFrame): GeoDataFrame with edges for network in EPSG:4326
         crs (str): Desired output cordinate system
 
-	Returns:
-		nodes (gpd.GeoDataFrame): nodes GeoDataFrame with unique ids based on coordinates named osmid in desired crs
-		edges (gpd.GeoDataFrame): edges GeoDataFrame with to - from attributes based on nodes ids named u and v respectively in desired crs
-	"""
+    Returns:
+        nodes (gpd.GeoDataFrame): nodes GeoDataFrame with unique ids based on coordinates named osmid in desired crs
+        edges (gpd.GeoDataFrame): edges GeoDataFrame with to - from attributes based on nodes ids named u and v respectively in desired crs
+    """
 
-	# Copy edges and nodes to avoid editing original GeoDataFrames
-	nodes = nodes.copy()
-	edges = edges.copy()
-	# Change coordinate system to meters for unique ids
-	nodes = nodes.to_crs(crs)
-	edges = edges.to_crs(crs)
-	# Unique str id for nodes based on coordinates
-	nodes['osmid'] = (nodes['geometry'].x).astype(str)+(nodes['geometry'].y).astype(str)
-	# Create columns [u] and [v] in edges for stablishing to and from
-	edges['u'] = ''
-	edges['v'] = ''
-	# Extract start and end coordinates for [u,v] columns
-	for index, row in edges.iterrows():
-		edges.at[index,'u'] = str(list(row['geometry'].coords)[0][0])+str(list(row['geometry'].coords)[0][1])
-		edges.at[index,'v'] = str(list(row['geometry'].coords)[-1][0])+str(list(row['geometry'].coords)[-1][1])
-	# Add key column for compatibility with osmnx
-	edges['key'] = 0
-	# Calculate edges lentgh
-	edges['length'] = edges.to_crs(crs).length
+    # Copy edges and nodes to avoid editing original GeoDataFrames
+    nodes = nodes.copy()
+    edges = edges.copy()
+    # Change coordinate system to meters for unique ids
+    nodes = nodes.to_crs(crs)
+    edges = edges.to_crs(crs)
+    # Unique str id for nodes based on coordinates
+    nodes['osmid'] = (nodes['geometry'].x).astype(str)+(nodes['geometry'].y).astype(str)
+    # Create columns [u] and [v] in edges for stablishing to and from
+    edges['u'] = ''
+    edges['v'] = ''
+    # Extract start and end coordinates for [u,v] columns
+    for index, row in edges.iterrows():
+        edges.at[index,'u'] = str(list(row['geometry'].coords)[0][0])+str(list(row['geometry'].coords)[0][1])
+        edges.at[index,'v'] = str(list(row['geometry'].coords)[-1][0])+str(list(row['geometry'].coords)[-1][1])
+    # Add key column for compatibility with osmnx
+    edges['key'] = 0
+    # Calculate edges lentgh
+    edges['length'] = edges.to_crs(crs).length
     # Organice nodes and edges
-	nodes = nodes.set_index('osmid')
-	nodes['x'] = nodes['geometry'].x
-	nodes['y'] = nodes['geometry'].y
-	edges = edges.set_index(['u','v','key'])
+    nodes['x'] = nodes['geometry'].x
+    nodes['y'] = nodes['geometry'].y
 
-	return nodes, edges
+    # remove duplicates
+    edges = resolve_duplicates_indexes(edges, crs)
+    edges = edges.set_index(['u','v','key'])
+    nodes = nodes.set_index('osmid')
+
+    return nodes, edges
 
 
 def network_from_tessellation_ig_rtree(blocks:gpd.GeoDataFrame):
@@ -342,8 +345,20 @@ def assing_blocks_attribute_to_voronoi(blocks:gpd.GeoDataFrame, voronoi:gpd.GeoD
     return voronoi
 
 
-def network_from_tessellation(gdf):
+def network_from_tessellation(gdf, crs):
+    """
+    Generates a road network graph from a tessellation of the provided geometric data.
+
+    Args:
+        gdf (geopandas.GeoDataFrame): A GeoDataFrame containing the initial polygons or multipolygons from which the tessellation 
+        will be derived. These geometries will be processed to generate road network features.
+    Returns:
+        geopandas.GeoDataFrame: A GeoDataFrame containing the nodes (points) of the generated road network.
+    
+    geopandas.GeoDataFrame: A GeoDataFrame containing the edges (lines) of the generated road network.
+    """
     # gdf preprocessing
+    gdf = gdf.to_crs(crs)
     gdf = gdf.copy()
     gdf = gdf.dissolve().explode().reset_index() # eliminate overlaping polygons and multipolygon
     # create tessellation
@@ -352,8 +367,8 @@ def network_from_tessellation(gdf):
     # polygons to lines
     lines_gdf = gpd.GeoDataFrame(geometry=tess_gdf.geometry.boundary)
     # separate lines by intersection
-    lines_single = gpd.GeoDataFrame(geometry=lines_gdf.dissolve().geometry.map(lambda x: sh.ops.linemerge(x)).explode())
-    lines_single = lines_single.set_crs("EPSG:32613")
+    lines_single = gpd.GeoDataFrame(geometry=lines_gdf.dissolve().geometry.map(lambda x: ops.linemerge(x)).explode())
+    lines_single = lines_single.set_crs(crs)
     lines_single = lines_single.reset_index(drop=True)
     lines_single = lines_single.reset_index()
     # extract first and last vertices from lines
@@ -366,12 +381,61 @@ def network_from_tessellation(gdf):
     nodes_gdf = pd.DataFrame(point_geo_filter)
     nodes_gdf = nodes_gdf.rename(columns={0:'geometry'})
     nodes_gdf = nodes_gdf.set_geometry('geometry')
-    nodes_gdf = nodes_gdf.set_crs("EPSG:32613")
-    # create first network and graph
+    nodes_gdf = nodes_gdf.set_crs(crs)
+    # format nodes and edges
     nodes, edges = network_entities(nodes_gdf, lines_single, crs="EPSG:32613")
+    #create graph
     G = ox.graph_from_gdfs(nodes, edges)
     # consolidate graph
     G2 = ox.consolidate_intersections(G, rebuild_graph=True, tolerance=10, dead_ends=True)
     nodes, edges = ox.graph_to_gdfs(G2)
 
     return nodes, edges
+
+
+def resolve_duplicates_indexes(gdf, crs):
+    """
+    Resolves duplicates in a GeoDataFrame based on the multi-level index ('u', 'v', 'key') and a 'length' column.
+    
+    Parameters:
+    gdf (geopandas.GeoDataFrame): The input GeoDataFrame with a multi-level index ('u', 'v', 'key') and a 'length' column.
+        
+    Returns:
+    geopandas.GeoDataFrame: A GeoDataFrame where duplicates based on the index are resolved according to the rules above.
+    """
+    
+    # First, sort by index to ensure consistent grouping
+    gdf = gdf.sort_index()
+    
+    # Group by the multi-level index ('u', 'v', 'key')
+    grouped = gdf.groupby(['u', 'v', 'key'])
+    
+    # Lists to track rows to drop and new rows with modified keys
+    rows_to_drop = []
+    new_rows = []
+    
+    for (u, v, key), group in grouped:
+        if len(group) > 1:
+            # Check if 'length' values are the same for all rows in this group
+            if group['length'].nunique() == 1:
+                # If the 'length' is the same for all rows, drop the duplicates, keeping the first
+                rows_to_drop.append(group.index[1:])  # Keep the first, drop the rest
+            else:
+                # If 'length' is different, increment the 'key' of the second row
+                new_row = group.iloc[1].copy()  # Copy the second row
+                new_row['key'] += 1  # Increment the key
+                new_rows.append(new_row)
+                rows_to_drop.append(group.index[1:])  # Drop the second row
+    
+    # Drop the identified duplicate rows
+    gdf = gdf.drop(pd.Index([index for sublist in rows_to_drop for index in sublist]))
+    
+    # Add the new rows with the incremented 'key'
+    # gdf = pd.DataFrame(gdf) # set as DataFrame for concat
+    gdf = pd.concat([gdf, pd.DataFrame(new_rows)], ignore_index=False)
+
+    # Set geometry
+    gdf = gpd.GeoDataFrame(gdf, geometry='geometry', crs=crs)
+    
+    # Return the modified DataFrame sorted by the index
+    return gdf.sort_index()
