@@ -95,6 +95,96 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
     return nodes, edges
 
 
+def create_network(nodes, edges, projected_crs="EPSG:6372",expand_coords=False):
+
+	"""
+	Creates a network from nodes and edges without unique ids and to - from attributes by using coordinates.
+    Assigs new unique 'key's for edges whenever there are duplicates in the 'u', 'v' and 'key' columns.
+
+	Arguments:
+		nodes (geopandas.GeoDataFrame): GeoDataFrame with nodes for network in EPSG:4326.
+		edges (geopandas.GeoDataFrame): GeoDataFrame with edges for network in EPSG:4326.
+		projected_crs (str, optional): string containing projected crs to be used depending on area of interest. Defaults to "EPSG:6372".
+		expand_coords (bool, optional): Boolean that, if true, multiplies coordinates by 10 to diminish the possibility of two nodes having the same osmid.
+
+	Returns:
+		geopandas.GeoDataFrame: nodes GeoDataFrame with unique ids based on coordinates named osmid in EPSG:4326
+		geopandas.GeoDataFrame: edges GeoDataFrame with to - from attributes based on nodes ids named u and v respectively in EPSG:4326
+	"""
+
+	# 1.1 --------------- LOAD AND PREPARE INPUT DATA
+    #Copy edges and nodes to avoid editing original GeoDataFrames
+	nodes = nodes.copy()
+	edges = edges.copy()
+	#Change coordinate system to meters for unique ids creation
+	nodes = nodes.to_crs(projected_crs)
+	edges = edges.to_crs(projected_crs)
+
+    # 1.2 --------------- CREATE UNIQUE IDs BASED ON COORDINATES
+	# Create unique id for nodes based on coordinates
+	if expand_coords:
+		nodes['osmid'] = (((nodes.geometry.x)*10).astype(int)).astype(str)+(((nodes.geometry.y)*10).astype(int)).astype(str)
+	else:
+		nodes['osmid'] = ((nodes.geometry.x).astype(int)).astype(str)+((nodes.geometry.y).astype(int)).astype(str)
+	##Set columns in edges for to[u] and from[v] columns
+	edges['u'] = np.nan
+	edges['v'] = np.nan
+	edges.u.astype(str)
+	edges.v.astype(str)
+	# Create unique id for edges based on coordinates
+	for index, row in edges.iterrows():
+		if expand_coords:
+			edges.at[index,'u'] = str(int((list(row.geometry.coords)[0][0])*10))+str(int((list(row.geometry.coords)[0][1])*10))
+			edges.at[index,'v'] = str(int((list(row.geometry.coords)[-1][0])*10))+str(int((list(row.geometry.coords)[-1][1])*10))
+		else:
+			edges.at[index,'u'] = str(int(list(row.geometry.coords)[0][0]))+str(int(list(row.geometry.coords)[0][1]))
+			edges.at[index,'v'] = str(int(list(row.geometry.coords)[-1][0]))+str(int(list(row.geometry.coords)[-1][1]))
+
+    # 1.3 --------------- RE-REGISTER DUPLICATED EDGES BASED ON 'u'+'v'+'key'
+	#Add key column for compatibility with OSMnx
+	edges['key'] = 0
+	# Find 'u', 'v' and 'key' duplicates in edges (Should never be the case)
+	duplicated_edges = edges[edges.duplicated(subset=['u', 'v', 'key'], keep=False)]
+	# Prepare registration_dict. Will hold unique 'u','v' and 'key' assigned.
+	registration_dict = {}
+	# For each duplicated edge found:
+	for index,row in duplicated_edges.iterrows():
+		# Obtain current 'u'+'v'
+		current_u = row['u']
+		current_v = row['v']
+		u_v_id = str(row['u'])+str(row['v'])
+		# If current 'u' and 'v' are already registered
+		if u_v_id in registration_dict:
+			# Read key that has been assigned
+			registered_key = registration_dict[u_v_id]
+			# Create new unregistered unique key
+			new_key = registered_key+1
+			# Register new unique key and update dictionary
+			edges.loc[index,'key'] = new_key
+			registration_dict[u_v_id] = new_key
+			print(f"Re-registered edge with u {current_u} and v {current_v} with key {new_key}.")
+		# Else, it is the first time that this 'u' and 'v' is registered
+		else:
+			# Register new unique key and update dictionary
+			edges.loc[index,'key'] = 0
+			registration_dict[u_v_id] = 0
+			print(f"Re-registered edge with u {current_u} and v {current_v} with key 0.")
+
+    # 1.4 --------------- FINAL OUTPUT FORMAT
+	#Change [u,v] columns to integer
+	edges['u'] = edges.u.astype(int)
+	edges['v'] = edges.v.astype(int)
+	#Calculate edges lentgh
+	edges['length'] = edges.to_crs(projected_crs).length
+	#Change osmid to integer
+	nodes['osmid'] = nodes.osmid.astype(int)
+	#Transform coordinates
+	nodes = nodes.to_crs("EPSG:4326")
+	edges = edges.to_crs("EPSG:4326")
+
+	return nodes, edges
+
+
 def network_from_tessellation_ig_rtree(blocks:gpd.GeoDataFrame):
     '''
     Function to create a network based on the tessellations conformed from a set of polygons
