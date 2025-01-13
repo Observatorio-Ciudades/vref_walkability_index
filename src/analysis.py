@@ -3,11 +3,13 @@ import osmnx as ox
 import igraph as ig
 from rtree import index
 import shapely as sh
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, Point, Polygon, MultiLineString
 import momepy
 import numpy as np
 from scipy.spatial import Voronoi
 import pandas as pd
+from shapely import ops
+
 
 
 def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, buff:int):
@@ -50,7 +52,7 @@ def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edg
     return zone_boeing_nodes,zone_boeing_edges
 
 
-def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:32618'):
+def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:32618', expand_coords=(False, 10)):
     """
     Create a network based on nodes and edges without unique ids and to - from attributes.
 
@@ -71,14 +73,25 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
     nodes = nodes.to_crs(crs)
     edges = edges.to_crs(crs)
     # Unique str id for nodes based on coordinates
-    nodes['osmid'] = (nodes['geometry'].x).astype(str)+(nodes['geometry'].y).astype(str)
-    # Create columns [u] and [v] in edges for stablishing to and from
+    if expand_coords[0]:
+        nodes['osmid'] = (((nodes.geometry.x)*expand_coords[1]).astype(int)).astype(str)+(((nodes.geometry.y)*expand_coords[1]).astype(int)).astype(str)
+    else:
+        nodes['osmid'] = ((nodes.geometry.x).astype(int)).astype(str)+((nodes.geometry.y).astype(int)).astype(str)
+    ##Set columns in edges for to[u] and from[v] columns
     edges['u'] = ''
     edges['v'] = ''
-    # Extract start and end coordinates for [u,v] columns
+    edges.u.astype(str)
+    edges.v.astype(str)
+    # Create unique id for edges based on coordinates
     for index, row in edges.iterrows():
-        edges.at[index,'u'] = str(list(row['geometry'].coords)[0][0])+str(list(row['geometry'].coords)[0][1])
-        edges.at[index,'v'] = str(list(row['geometry'].coords)[-1][0])+str(list(row['geometry'].coords)[-1][1])
+        if expand_coords[0]:
+            edges.at[index,'u'] = str(int((list(row.geometry.coords)[0][0])*expand_coords[1]))+str(int((list(row.geometry.coords)[0][1])*expand_coords[1]))
+            edges.at[index,'v'] = str(int((list(row.geometry.coords)[-1][0])*expand_coords[1]))+str(int((list(row.geometry.coords)[-1][1])*expand_coords[1]))
+        else:
+            edges.at[index,'u'] = str(int(list(row.geometry.coords)[0][0]))+str(int(list(row.geometry.coords)[0][1]))
+            edges.at[index,'v'] = str(int(list(row.geometry.coords)[-1][0]))+str(int(list(row.geometry.coords)[-1][1]))
+    # Remove redundant nodes
+    nodes, edges = remove_redundant_nodes(nodes, edges)
     # Add key column for compatibility with osmnx
     edges['key'] = 0
     # Calculate edges lentgh
@@ -89,6 +102,8 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
 
     # remove duplicates
     edges = resolve_duplicates_indexes(edges, crs)
+    edges = edges.drop_duplicates(subset=['u','v','key'])
+    nodes = nodes.drop_duplicates(subset=['osmid'])
     edges = edges.set_index(['u','v','key'])
     nodes = nodes.set_index('osmid')
 
@@ -96,93 +111,102 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
 
 
 def create_network(nodes, edges, projected_crs="EPSG:6372",expand_coords=False):
-
-	"""
-	Creates a network from nodes and edges without unique ids and to - from attributes by using coordinates.
+    """
+    Creates a network from nodes and edges without unique ids and to - from attributes by using coordinates.
     Assigs new unique 'key's for edges whenever there are duplicates in the 'u', 'v' and 'key' columns.
 
-	Arguments:
-		nodes (geopandas.GeoDataFrame): GeoDataFrame with nodes for network in EPSG:4326.
-		edges (geopandas.GeoDataFrame): GeoDataFrame with edges for network in EPSG:4326.
-		projected_crs (str, optional): string containing projected crs to be used depending on area of interest. Defaults to "EPSG:6372".
-		expand_coords (bool, optional): Boolean that, if true, multiplies coordinates by 10 to diminish the possibility of two nodes having the same osmid.
+    Arguments:
+        nodes (geopandas.GeoDataFrame): GeoDataFrame with nodes for network in EPSG:4326.
+        edges (geopandas.GeoDataFrame): GeoDataFrame with edges for network in EPSG:4326.
+        projected_crs (str, optional): string containing projected crs to be used depending on area of interest. Defaults to "EPSG:6372".
+        expand_coords (bool, optional): Boolean that, if true, multiplies coordinates by 10 to diminish the possibility of two nodes having the same osmid.
 
-	Returns:
-		geopandas.GeoDataFrame: nodes GeoDataFrame with unique ids based on coordinates named osmid in EPSG:4326
-		geopandas.GeoDataFrame: edges GeoDataFrame with to - from attributes based on nodes ids named u and v respectively in EPSG:4326
-	"""
+    Returns:
+        geopandas.GeoDataFrame: nodes GeoDataFrame with unique ids based on coordinates named osmid in EPSG:4326
+        geopandas.GeoDataFrame: edges GeoDataFrame with to - from attributes based on nodes ids named u and v respectively in EPSG:4326
+    """
 
-	# 1.1 --------------- LOAD AND PREPARE INPUT DATA
+    # 1.1 --------------- LOAD AND PREPARE INPUT DATA
     #Copy edges and nodes to avoid editing original GeoDataFrames
-	nodes = nodes.copy()
-	edges = edges.copy()
-	#Change coordinate system to meters for unique ids creation
-	nodes = nodes.to_crs(projected_crs)
-	edges = edges.to_crs(projected_crs)
+    nodes = nodes.copy()
+    edges = edges.copy()
+    #Change coordinate system to meters for unique ids creation
+    nodes = nodes.to_crs(projected_crs)
+    edges = edges.to_crs(projected_crs)
 
     # 1.2 --------------- CREATE UNIQUE IDs BASED ON COORDINATES
-	# Create unique id for nodes based on coordinates
-	if expand_coords:
-		nodes['osmid'] = (((nodes.geometry.x)*10).astype(int)).astype(str)+(((nodes.geometry.y)*10).astype(int)).astype(str)
-	else:
-		nodes['osmid'] = ((nodes.geometry.x).astype(int)).astype(str)+((nodes.geometry.y).astype(int)).astype(str)
-	##Set columns in edges for to[u] and from[v] columns
-	edges['u'] = np.nan
-	edges['v'] = np.nan
-	edges.u.astype(str)
-	edges.v.astype(str)
-	# Create unique id for edges based on coordinates
-	for index, row in edges.iterrows():
-		if expand_coords:
-			edges.at[index,'u'] = str(int((list(row.geometry.coords)[0][0])*10))+str(int((list(row.geometry.coords)[0][1])*10))
-			edges.at[index,'v'] = str(int((list(row.geometry.coords)[-1][0])*10))+str(int((list(row.geometry.coords)[-1][1])*10))
-		else:
-			edges.at[index,'u'] = str(int(list(row.geometry.coords)[0][0]))+str(int(list(row.geometry.coords)[0][1]))
-			edges.at[index,'v'] = str(int(list(row.geometry.coords)[-1][0]))+str(int(list(row.geometry.coords)[-1][1]))
+    # Create unique id for nodes based on coordinates
+    if expand_coords:
+        nodes['osmid'] = (((nodes.geometry.x)*100).astype(int)).astype(str)+(((nodes.geometry.y)*100).astype(int)).astype(str)
+    else:
+        nodes['osmid'] = ((nodes.geometry.x).astype(int)).astype(str)+((nodes.geometry.y).astype(int)).astype(str)
+    ##Set columns in edges for to[u] and from[v] columns
+    edges['u'] = ''
+    edges['v'] = ''
+    edges.u.astype(str)
+    edges.v.astype(str)
+    # Create unique id for edges based on coordinates
+    for index, row in edges.iterrows():
+        if expand_coords:
+            edges.at[index,'u'] = str(int((list(row.geometry.coords)[0][0])*100))+str(int((list(row.geometry.coords)[0][1])*100))
+            edges.at[index,'v'] = str(int((list(row.geometry.coords)[-1][0])*100))+str(int((list(row.geometry.coords)[-1][1])*100))
+        else:
+            edges.at[index,'u'] = str(int(list(row.geometry.coords)[0][0]))+str(int(list(row.geometry.coords)[0][1]))
+            edges.at[index,'v'] = str(int(list(row.geometry.coords)[-1][0]))+str(int(list(row.geometry.coords)[-1][1]))
 
     # 1.3 --------------- RE-REGISTER DUPLICATED EDGES BASED ON 'u'+'v'+'key'
-	#Add key column for compatibility with OSMnx
-	edges['key'] = 0
-	# Find 'u', 'v' and 'key' duplicates in edges (Should never be the case)
-	duplicated_edges = edges[edges.duplicated(subset=['u', 'v', 'key'], keep=False)]
-	# Prepare registration_dict. Will hold unique 'u','v' and 'key' assigned.
-	registration_dict = {}
-	# For each duplicated edge found:
-	for index,row in duplicated_edges.iterrows():
-		# Obtain current 'u'+'v'
-		current_u = row['u']
-		current_v = row['v']
-		u_v_id = str(row['u'])+str(row['v'])
-		# If current 'u' and 'v' are already registered
-		if u_v_id in registration_dict:
-			# Read key that has been assigned
-			registered_key = registration_dict[u_v_id]
-			# Create new unregistered unique key
-			new_key = registered_key+1
-			# Register new unique key and update dictionary
-			edges.loc[index,'key'] = new_key
-			registration_dict[u_v_id] = new_key
-			print(f"Re-registered edge with u {current_u} and v {current_v} with key {new_key}.")
-		# Else, it is the first time that this 'u' and 'v' is registered
-		else:
-			# Register new unique key and update dictionary
-			edges.loc[index,'key'] = 0
-			registration_dict[u_v_id] = 0
-			print(f"Re-registered edge with u {current_u} and v {current_v} with key 0.")
+    # Remove redundant nodes
+    # nodes, edges = remove_redundant_nodes(nodes, edges)
+    #Add key column for compatibility with OSMnx
+    edges['key'] = 0
+    # Find 'u', 'v' and 'key' duplicates in edges (Should never be the case)
+    '''duplicated_edges = edges[edges.duplicated(subset=['u', 'v', 'key'], keep=False)]
+    # Prepare registration_dict. Will hold unique 'u','v' and 'key' assigned.
+    registration_dict = {}
+    # For each duplicated edge found:
+    for index,row in duplicated_edges.iterrows():
+        # Obtain current 'u'+'v'
+        # current_u = row['u']
+        # current_v = row['v']
+        u_v_id = str(row['u'])+str(row['v'])
+        # If current 'u' and 'v' are already registered
+        if u_v_id in registration_dict:
+            # Read key that has been assigned
+            registered_key = registration_dict[u_v_id]
+            # Create new unregistered unique key
+            new_key = registered_key+1
+            # Register new unique key and update dictionary
+            edges.loc[index,'key'] = new_key
+            registration_dict[u_v_id] = new_key
+            # print(f"Re-registered edge with u {current_u} and v {current_v} with key {new_key}.")
+        # Else, it is the first time that this 'u' and 'v' is registered
+        else:
+            # Register new unique key and update dictionary
+            edges.loc[index,'key'] = 0
+            registration_dict[u_v_id] = 0
+            # print(f"Re-registered edge with u {current_u} and v {current_v} with key 0.")'''
 
     # 1.4 --------------- FINAL OUTPUT FORMAT
-	#Change [u,v] columns to integer
-	edges['u'] = edges.u.astype(int)
-	edges['v'] = edges.v.astype(int)
-	#Calculate edges lentgh
-	edges['length'] = edges.to_crs(projected_crs).length
-	#Change osmid to integer
-	nodes['osmid'] = nodes.osmid.astype(int)
-	#Transform coordinates
-	nodes = nodes.to_crs("EPSG:4326")
-	edges = edges.to_crs("EPSG:4326")
+    # Add x, y columns to nodes
+    nodes['x'] = nodes.geometry.x
+    nodes['y'] = nodes.geometry.y
+    #Change [u,v] columns to integer
+    edges['u'] = edges.u.astype(int)
+    edges['v'] = edges.v.astype(int)
+    #Calculate edges lentgh
+    edges['length'] = edges.to_crs(projected_crs).length
+    #Change osmid to integer
+    nodes['osmid'] = nodes.osmid.astype(int)
+    #Transform coordinates
+    nodes = nodes.to_crs("EPSG:4326")
+    edges = edges.to_crs("EPSG:4326")
 
-	return nodes, edges
+    # remove duplicates
+    edges = resolve_duplicates_indexes(edges, projected_crs)
+    edges = edges.set_index(['u','v','key'])
+    nodes = nodes.set_index('osmid')
+
+    return nodes, edges
 
 
 def network_from_tessellation_ig_rtree(blocks:gpd.GeoDataFrame):
@@ -456,6 +480,10 @@ def network_from_tessellation(gdf, crs):
     tess_gdf = momepy.morphological_tessellation(gdf, clip=limit)
     # polygons to lines
     lines_gdf = gpd.GeoDataFrame(geometry=tess_gdf.geometry.boundary)
+    # delete unnecessary variables to free memory
+    del tess_gdf
+    del gdf
+    del limit
     # separate lines by intersection
     lines_single = gpd.GeoDataFrame(geometry=lines_gdf.dissolve().geometry.map(lambda x: ops.linemerge(x)).explode())
     lines_single = lines_single.set_crs(crs)
@@ -473,12 +501,258 @@ def network_from_tessellation(gdf, crs):
     nodes_gdf = nodes_gdf.set_geometry('geometry')
     nodes_gdf = nodes_gdf.set_crs(crs)
     # format nodes and edges
-    nodes, edges = network_entities(nodes_gdf, lines_single, crs="EPSG:32613")
+    nodes, edges = network_entities(nodes_gdf, lines_single, crs=crs, expand_coords=(True,100))
+    # delete unnecessary variables to free memory
+    del nodes_gdf
+    del lines_single
+    # nodes, edges = create_network(nodes_gdf, lines_single, projected_crs=crs, expand_coords=True)
     #create graph
     G = ox.graph_from_gdfs(nodes, edges)
     # consolidate graph
     G2 = ox.consolidate_intersections(G, rebuild_graph=True, tolerance=10, dead_ends=True)
+    # delete unnecessary variables to free memory
+    del G
+    # extract nodes and edges
     nodes, edges = ox.graph_to_gdfs(G2)
+
+    # format nodes and edges
+    nodes = nodes.reset_index()
+    nodes = nodes.drop(columns=['osmid'])
+    nodes = nodes.rename(columns={'osmid_original':'osmid'})
+    nodes = nodes.set_index('osmid')
+    edges = edges.reset_index()
+    edges = edges.drop(columns=['u','v','index'])
+    edges = edges.rename(columns={'u_original':'u',
+    'v_original':'v'})
+    edges = edges.set_index(['u','v','key'])
+
+    return nodes, edges
+
+def create_unique_edge_id(edges, order='uvkey'):
+    """
+    Create a unique edge_id based on the 'u', 'v' and 'key' columns of the edges GeoDataFrame.
+
+    Args:
+        edges (geopandas.GeoDataFrame): GeoDataFrame containing the edges of the network.
+        order (str, optional): Order for the unique id. Defaults to 'uvkey'.
+
+    Returns:
+        geopandas.GeoDataFrame: GeoDataFrame with the unique edge_id column.
+    """
+    # Turn ID data to string
+    edges['u'] = edges['u'].astype('str')
+    edges['v'] = edges['v'].astype('str')
+    edges['key'] = edges['key'].astype('str')
+    # Concatenate ID data to create unique edge_id
+    if order == 'uvkey':
+        edges['edge_id'] = edges['u']+edges['v']+edges['key']
+    elif order == 'vukey':
+        edges['edge_id'] = edges['v']+edges['u']+edges['key']
+    # Turn ID data back to int
+    edges['u'] = edges['u'].astype('int')
+    edges['v'] = edges['v'].astype('int')
+    edges['key'] = edges['key'].astype('int')
+
+    return edges
+
+def lines_connect(line1, line2):
+    """ This function takes as input two lines (From a MultiLineString) and checks if they connect properly,
+         if one needs to be reversed or if both need to be reversed.
+	Args:
+		line1 (geometry): Geometry of line 1 from the MultiLineString.
+        line2 (geometry): Geometry of line 2 from the MultiLineString.
+	Returns:
+        connection (bool):True if both lines connect, False if they don't.
+    	joining_line: The first line, as it is or reversed.
+        new_line: The second line, as it is or reversed.
+    """
+    # Case 1: Last coord of first line connects with first coord of second line. No modification needed.
+    if line1.coords[-1] == line2.coords[0]:
+        return True, line1, line2
+    
+    # Case 2: First coord of first line connects with first coord of second line. Reverse first line.
+    elif line1.coords[0] == line2.coords[0]:
+        line1_reversed = LineString(line1.coords[::-1])
+        return True, line1_reversed, line2
+
+    # Case 3: Last coord of first line connects with Last coord of second line. Reverse second line.
+    elif line1.coords[-1] == line2.coords[-1]:
+        line2_reversed = LineString(line2.coords[::-1])
+        return True, line1, line2_reversed
+
+    # Case 4: First coord of first line connects with Last coord of second line. Reverse both lines.
+    elif line1.coords[0] == line2.coords[-1]:
+        line1_reversed = LineString(line1.coords[::-1])
+        line2_reversed = LineString(line2.coords[::-1])
+        return True, line1_reversed, line2_reversed
+
+    # Case 5: No coords connect
+    else:
+        return False, line1, line2
+    
+
+def multilinestring_to_linestring(row):
+    """ This function converts a MultiLineStrings to properly connected LineStrings.
+	Args:
+		row (geopandas.GeoDataFrame): row of a GeoDataFrame containing either a LineString or a MultiLineString in its geometry.
+	Returns:
+        geopandas.GeoDataFrame: row of a GeoDataFrame with no MultiLineStrings, LineStrings only.
+    """
+    line = row['geometry']
+    
+    # If the geometry is already a LineString, return it as is
+    if isinstance(line, LineString):
+        #print(f"Edge {row['edge_id']} is a LineString.")
+        return row
+    
+    # If it's a MultiLineString, concatenate all LineStrings' coordinates, ensuring they connect
+    elif isinstance(line, MultiLineString):
+        #print(f"Edge {row['edge_id']} is a MultiLineString.")
+        
+        # Extract and combine all coordinates from each LineString in MultiLineString
+        all_coords = list(line.geoms[0].coords)  # Start with the first LineString's coordinates
+
+        # LineStrings to be concatenated to first LineString
+        lines_i = []
+        for i in range(1,len(line.geoms)):
+            lines_i.append(i)
+
+        # Added attempts limit for cases where an node is shared by two edges
+        # that coincide in various points (very very rare, due to Volvo's Tessellations network)
+        attempts = 0
+        attempts_limit = 100
+        
+        # Iterate over the remaining LineStrings and ensure they connect
+        while len(lines_i)>0: # While there are still lines to be connected
+
+            if attempts < attempts_limit:
+                # Iterate over each one of them and try to find a connection to line formed so far
+                for i in lines_i: 
+
+                    # Lines to connect
+                    joining_line = LineString(all_coords) # The line formed so far
+                    new_line = line.geoms[i] # The new line to be connected
+                    # Check if lines connect, and reverse lines if needed for connection
+                    connection, joining_line, new_line = lines_connect(joining_line, new_line)
+                    # Perform connection
+                    if connection:
+                        # Register current coords (cannot use previous, might be reversed)
+                        all_coords = list(joining_line.coords)
+                        # Extend the coordinate list with the new line's coordinates
+                        all_coords.extend(list(new_line.coords))
+                        # Remove added i from lines_i list
+                        lines_i.remove(i)
+                    # Add attempt
+                    attempts+=1
+            else:
+                # Stop
+                print(f"Edge {row['edge_id']} exceeded the attempts limit for MultiLineString to LineString conversion.")
+                global multilinestring_fail_lst
+                multilinestring_fail_lst.append(row['edge_id'])
+                return row
+        
+        # Update the row's geometry with the resulting LineString
+        row['geometry'] = LineString(all_coords)
+        return row
+
+def remove_redundant_nodes(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame):
+    """
+    Remove nodes that only are connected to two edges.
+
+    Args:
+        nodes (geopandas.GeoDataFrame): GeoDataFrame with nodes for network in EPSG:4326
+        edges (geopandas.GeoDataFrame): GeoDataFrame with edges for network in EPSG:4326
+
+    Returns:
+        geopandas.GeoDataFrame: nodes GeoDataFrame without redundant nodes
+        geopandas.GeoDataFrame: edges GeoDataFrame with merged edges and without redundant nodes
+    """
+
+    # Check if 'u' and 'v' are in the columns of edges and 'osmid' in nodes or are part of index
+    if 'u' not in edges.columns:
+         edges = edges.reset_index()
+
+    if 'osmid' not in nodes.columns:
+        nodes = nodes.reset_index()
+    
+    # Extract the 'u' and 'v' columns from edges
+    u_list = list(edges.u)
+    v_list = list(edges.v)
+
+    # Find the number of edges that reach that osmid
+    for osmid in list(nodes.osmid.unique()):
+        # Total times = Times where that osmid is an edges 'u' + Times where that osmid is an edges 'v'
+        streets_count = u_list.count(osmid) + v_list.count(osmid)
+        # Data registration
+        nodes.loc[nodes.osmid == osmid,'streets_count'] = streets_count
+
+    # Select nodes with two streets
+    two_edges_osmids = list(nodes.loc[nodes.streets_count==2].osmid.unique())
+
+    # multilinestring_fail_lst = []
+
+    for osmid in two_edges_osmids:
+
+        # try:
+
+        #print("--"*10)
+        #print(f"OSMID OF INTEREST: {osmid}.")
+        
+        # Find edges that use that osmid
+        found_edges = edges.loc[(edges.u == osmid)|(edges.v == osmid)].copy()
+        # found_in_v = edges.loc[edges.v == osmid].copy()
+        # found_edges = pd.concat([found_in_u,found_in_v])
+        #print(found_edges)
+        
+        # Find the other osmids those edges connect with
+        u_v_list = list(found_edges.u.unique()) + list(found_edges.v.unique())
+
+        # Remove itself
+        u_v_list = [i for i in u_v_list if i != osmid]
+        # If both edges connect to the same osmid (It is a loop road split in two)
+        # Double that osmid
+        if len(u_v_list) == 1:
+            u_v_list.append(u_v_list[0])
+        elif len(u_v_list) == 0:
+            continue
+        
+        # Dissolve lines (Creates MultiLineString, will convert to LineString)
+        flattened_edge = found_edges.dissolve()
+        # Flatten MultiLineString to LineString
+        flattened_edge.geometry = flattened_edge.line_merge()
+    
+        # Add data to new edge
+        flattened_edge['u'] = u_v_list[0]
+        flattened_edge['v'] = u_v_list[1]
+        flattened_edge['key'] = 0
+
+        # Delete useless node and previous edges, concat new flattened edge.
+        nodes = nodes.loc[nodes.osmid != osmid].copy()
+        edges = edges.loc[(edges.u != osmid)|(edges.v != osmid)].copy()
+        edges = pd.concat([edges,flattened_edge])
+
+        # flattened_edge['ntw_origin'] = 'ntw_cleaning'
+        '''flattened_edge = create_unique_edge_id(flattened_edge)
+    
+        # Convert MultiLineStrings to LineStrings
+        flattened_edge = flattened_edge.apply(multilinestring_to_linestring,axis=1)
+        # If conversion fails, flattened edge_id gets added to global list multilinestring_fail_lst.
+        flattened_edge_id = flattened_edge.edge_id.unique()[0]
+        if flattened_edge_id not in multilinestring_fail_lst:
+            # Delete useless node and previous edges, concat new flattened edge.
+            nodes = nodes.loc[nodes.osmid != osmid].copy()
+            edges = edges.loc[(edges.u != edges)&(edges.v != osmid)].copy()
+            edges = pd.concat([edges,flattened_edge])
+        else:
+            print(f"Not dissolving edges reaching node {osmid}.")
+
+    except:
+        print(osmid)
+        print(u_v_list)'''
+
+    # Final format
+    # nodes.reset_index(inplace=True,drop=True)
+    # edges.reset_index(inplace=True,drop=True)
 
     return nodes, edges
 
@@ -528,4 +802,4 @@ def resolve_duplicates_indexes(gdf, crs):
     gdf = gpd.GeoDataFrame(gdf, geometry='geometry', crs=crs)
     
     # Return the modified DataFrame sorted by the index
-    return gdf.sort_index()
+    return gdf
