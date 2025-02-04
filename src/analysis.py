@@ -197,14 +197,14 @@ def create_network(nodes, edges, projected_crs="EPSG:6372",expand_coords=False):
     edges['length'] = edges.to_crs(projected_crs).length
     #Change osmid to integer
     nodes['osmid'] = nodes.osmid.astype(int)
-    #Transform coordinates
-    nodes = nodes.to_crs("EPSG:4326")
-    edges = edges.to_crs("EPSG:4326")
-
-    # remove duplicates
+    #Remove edge's unique ID ('u','v','key') duplicates
     edges = resolve_duplicates_indexes(edges, projected_crs)
     edges = edges.set_index(['u','v','key'])
     nodes = nodes.set_index('osmid')
+
+    #Transform coordinates
+    nodes = nodes.to_crs("EPSG:4326")
+    edges = edges.to_crs("EPSG:4326")
 
     return nodes, edges
 
