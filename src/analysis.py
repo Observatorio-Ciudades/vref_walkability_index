@@ -163,8 +163,11 @@ def create_network(nodes, edges, projected_crs="EPSG:6372",expand_coords=False):
     # nodes, edges = remove_redundant_nodes(nodes, edges)
     #Add key column for compatibility with OSMnx
     edges['key'] = 0
+    
+    # Code substituted by function resolve_duplicates_indexes()
+    old_way = """
     # Find 'u', 'v' and 'key' duplicates in edges (Should never be the case)
-    '''duplicated_edges = edges[edges.duplicated(subset=['u', 'v', 'key'], keep=False)]
+    duplicated_edges = edges[edges.duplicated(subset=['u', 'v', 'key'], keep=False)]
     # Prepare registration_dict. Will hold unique 'u','v' and 'key' assigned.
     registration_dict = {}
     # For each duplicated edge found:
@@ -188,7 +191,7 @@ def create_network(nodes, edges, projected_crs="EPSG:6372",expand_coords=False):
             # Register new unique key and update dictionary
             edges.loc[index,'key'] = 0
             registration_dict[u_v_id] = 0
-            # print(f"Re-registered edge with u {current_u} and v {current_v} with key 0.")'''
+            # print(f"Re-registered edge with u {current_u} and v {current_v} with key 0.")"""
 
     # 1.4 --------------- FINAL OUTPUT FORMAT
     # Add x, y columns to nodes
