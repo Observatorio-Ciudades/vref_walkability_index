@@ -73,11 +73,13 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
     nodes = nodes.to_crs(crs)
     edges = edges.to_crs(crs)
     # Unique str id for nodes based on coordinates
+    print('Creating unique ids (osmid) for nodes based on coordinates...')
     if expand_coords[0]:
         nodes['osmid'] = (((nodes.geometry.x)*expand_coords[1]).astype(int)).astype(str)+(((nodes.geometry.y)*expand_coords[1]).astype(int)).astype(str)
     else:
         nodes['osmid'] = ((nodes.geometry.x).astype(int)).astype(str)+((nodes.geometry.y).astype(int)).astype(str)
     ##Set columns in edges for to[u] and from[v] columns
+    print('Creating unique ids (u,v) for edges based on coordinates...')
     edges['u'] = ''
     edges['v'] = ''
     edges.u.astype(str)
@@ -91,6 +93,7 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
             edges.at[index,'u'] = str(int(list(row.geometry.coords)[0][0]))+str(int(list(row.geometry.coords)[0][1]))
             edges.at[index,'v'] = str(int(list(row.geometry.coords)[-1][0]))+str(int(list(row.geometry.coords)[-1][1]))
     # Remove redundant nodes
+    print('Removing redundant nodes...')
     nodes, edges = remove_redundant_nodes(nodes, edges)
     # Add key column for compatibility with osmnx
     edges['key'] = 0
@@ -101,6 +104,7 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
     nodes['y'] = nodes['geometry'].y
 
     # remove duplicates
+    print('Resolving indexes u, v, key...')
     edges = resolve_duplicates_indexes(edges, crs)
     edges = edges.drop_duplicates(subset=['u','v','key'])
     nodes = nodes.drop_duplicates(subset=['osmid'])
@@ -719,7 +723,7 @@ def remove_redundant_nodes(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame):
         # Dissolve lines (Creates MultiLineString, will convert to LineString)
         flattened_edge = found_edges.dissolve()
         # Flatten MultiLineString to LineString
-        flattened_edge.geometry = flattened_edge.line_merge()
+        flattened_edge["geometry"] = flattened_edge["geometry"].apply(ops.linemerge)
     
         # Add data to new edge
         flattened_edge['u'] = u_v_list[0]
@@ -728,7 +732,7 @@ def remove_redundant_nodes(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame):
 
         # Delete useless node and previous edges, concat new flattened edge.
         nodes = nodes.loc[nodes.osmid != osmid].copy()
-        edges = edges.loc[(edges.u != osmid)|(edges.v != osmid)].copy()
+        edges = edges.loc[(edges.u != osmid)&(edges.v != osmid)].copy()
         edges = pd.concat([edges,flattened_edge])
 
         # flattened_edge['ntw_origin'] = 'ntw_cleaning'
@@ -785,11 +789,14 @@ def resolve_duplicates_indexes(gdf, crs):
                 # If the 'length' is the same for all rows, drop the duplicates, keeping the first
                 rows_to_drop.append(group.index[1:])  # Keep the first, drop the rest
             else:
-                # If 'length' is different, increment the 'key' of the second row
-                new_row = group.iloc[1].copy()  # Copy the second row
-                new_row['key'] += 1  # Increment the key
-                new_rows.append(new_row)
-                rows_to_drop.append(group.index[1:])  # Drop the second row
+                # If 'length' is different, increment the 'key' of each of the following rows by 1
+                change_key=0
+                for i in range(1, len(group)):
+                    change_key+=1
+                    new_row = group.iloc[i].copy() # Copy the row
+                    new_row['key'] = change_key # Increment the key
+                    new_rows.append(new_row) # Append the new row
+                    rows_to_drop.append([group.index[i]]) # Drop the original row
     
     # Drop the identified duplicate rows
     gdf = gdf.drop(pd.Index([index for sublist in rows_to_drop for index in sublist]))
