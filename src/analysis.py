@@ -776,6 +776,9 @@ def resolve_duplicates_indexes(gdf, crs):
     """
     
     # First, sort by index to ensure consistent grouping
+    gdf.reset_index(inplace=True)
+    if 'index' in gdf.columns:
+        gdf.drop(columns=['index'],inplace=True)
     gdf = gdf.sort_index()
     
     # Group by the multi-level index ('u', 'v', 'key')
