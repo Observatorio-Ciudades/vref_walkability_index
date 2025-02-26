@@ -466,26 +466,34 @@ def assing_blocks_attribute_to_voronoi(blocks:gpd.GeoDataFrame, voronoi:gpd.GeoD
     return voronoi
 
 
-def network_from_tessellation(gdf, crs):
+def network_from_tessellation(gdf, crs, consolidate=(True,10)):
     """
     Generates a road network graph from a tessellation of the provided geometric data.
 
     Args:
         gdf (geopandas.GeoDataFrame): A GeoDataFrame containing the initial polygons or multipolygons from which the tessellation 
-        will be derived. These geometries will be processed to generate road network features.
+                                      will be derived. These geometries will be processed to generate road network features.
+        crs (str): The coordinate reference system to be used for the generated road network.
+        consolidate (tuple, optional): A tuple containing a boolean value and a float value. If the boolean value is True, the
+                                       generated road network will be consolidated. The float value represents the tolerance for consolidation. 
+                                       Defaults to (True,10).
     Returns:
         geopandas.GeoDataFrame: A GeoDataFrame containing the nodes (points) of the generated road network.
     
     geopandas.GeoDataFrame: A GeoDataFrame containing the edges (lines) of the generated road network.
     """
+    
     # gdf preprocessing
     gdf = gdf.to_crs(crs)
     gdf = gdf.copy()
     gdf = gdf.dissolve().explode().reset_index() # eliminate overlaping polygons and multipolygon
-    # create tessellation
+    
+    # Create tessellation
+    print('Creating tessellation...')
     limit = momepy.buffered_limit(gdf, buffer=50)
     tess_gdf = momepy.morphological_tessellation(gdf, clip=limit)
     # polygons to lines
+    print('Converting polygons to lines...')
     lines_gdf = gpd.GeoDataFrame(geometry=tess_gdf.geometry.boundary)
     # delete unnecessary variables to free memory
     del tess_gdf
@@ -496,7 +504,9 @@ def network_from_tessellation(gdf, crs):
     lines_single = lines_single.set_crs(crs)
     lines_single = lines_single.reset_index(drop=True)
     lines_single = lines_single.reset_index()
-    # extract first and last vertices from lines
+
+    # Extract first and last vertices from lines
+    print('Extracting points from lines...')
     point_geo = [Point(lines_single.iloc[i].geometry.coords[0]) for i in range(len(lines_single))]
     point_geo.extend([Point(lines_single.iloc[i].geometry.coords[-1]) for i in range(len(lines_single))])
     # remove duplicates
@@ -507,31 +517,43 @@ def network_from_tessellation(gdf, crs):
     nodes_gdf = nodes_gdf.rename(columns={0:'geometry'})
     nodes_gdf = nodes_gdf.set_geometry('geometry')
     nodes_gdf = nodes_gdf.set_crs(crs)
-    # format nodes and edges
+
+    # Format nodes and edges
+    print('Creating nodes and edges...')
+    # nodes, edges = create_network(nodes_gdf, lines_single, projected_crs=crs, expand_coords=True)
     nodes, edges = network_entities(nodes_gdf, lines_single, crs=crs, expand_coords=(True,100))
     # delete unnecessary variables to free memory
     del nodes_gdf
     del lines_single
-    # nodes, edges = create_network(nodes_gdf, lines_single, projected_crs=crs, expand_coords=True)
-    #create graph
-    G = ox.graph_from_gdfs(nodes, edges)
-    # consolidate graph
-    G2 = ox.consolidate_intersections(G, rebuild_graph=True, tolerance=10, dead_ends=True)
-    # delete unnecessary variables to free memory
-    del G
-    # extract nodes and edges
-    nodes, edges = ox.graph_to_gdfs(G2)
+    
+    # Consolidate if required
+    if consolidate[0]:
+        # Create graph
+        print('Creating graph...')
+        G = ox.graph_from_gdfs(nodes, edges)
+        print(f'Consolidating graph using tolerance of {consolidate[1]} meters...')
+        # consolidate graph
+        G2 = ox.consolidate_intersections(G, rebuild_graph=True, tolerance=consolidate[1], dead_ends=True)
+        del G #Save space
+        # Extract nodes and edges from consolidated graph
+        nodes, edges = ox.graph_to_gdfs(G2)
+        del G2 #Save space
+        # Format nodes and edges
+        print('Formating nodes and edges...')
+        nodes = nodes.reset_index()
+        nodes = nodes.drop(columns=['osmid'])
+        nodes = nodes.rename(columns={'osmid_original':'osmid'})
+        nodes = nodes.set_index('osmid')
+        edges = edges.reset_index()
+        edges = edges.drop(columns=['u','v','index'])
+        edges = edges.rename(columns={'u_original':'u',
+        'v_original':'v'})
+        edges = edges.set_index(['u','v','key'])
 
-    # format nodes and edges
-    nodes = nodes.reset_index()
-    nodes = nodes.drop(columns=['osmid'])
-    nodes = nodes.rename(columns={'osmid_original':'osmid'})
-    nodes = nodes.set_index('osmid')
-    edges = edges.reset_index()
-    edges = edges.drop(columns=['u','v','index'])
-    edges = edges.rename(columns={'u_original':'u',
-    'v_original':'v'})
-    edges = edges.set_index(['u','v','key'])
+    if 'index' in nodes.columns:
+        nodes = nodes.drop(columns=['index'])
+    if 'index' in edges.columns:
+        edges = edges.drop(columns=['index'])
 
     return nodes, edges
 
