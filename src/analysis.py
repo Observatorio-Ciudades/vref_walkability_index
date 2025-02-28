@@ -708,12 +708,23 @@ def remove_redundant_nodes(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame):
     u_list = list(edges.u)
     v_list = list(edges.v)
 
+    # Calculate street count for each node
+    old_way = """
     # Find the number of edges that reach that osmid
     for osmid in list(nodes.osmid.unique()):
         # Total times = Times where that osmid is an edges 'u' + Times where that osmid is an edges 'v'
         streets_count = u_list.count(osmid) + v_list.count(osmid)
         # Data registration
         nodes.loc[nodes.osmid == osmid,'streets_count'] = streets_count
+    """
+    # OPTIMIZED WAY:
+    # Count osmid occurrences and store as a pd.Series (fillna as 0s if a given osmid is misssing from 'u' or 'v')
+    u_counts = pd.Series(u_list).value_counts().fillna(0)
+    v_counts = pd.Series(v_list).value_counts().fillna(0)
+    # Add counts from both series 
+    streets_count_series = (u_counts.add(v_counts, fill_value=0)).astype(int)
+    # Assign values to joined_nodes_cleaning using map
+    nodes['streets_count'] = nodes['osmid'].map(streets_count_series).fillna(0).astype(int)
 
     # Select nodes with two streets
     two_edges_osmids = list(nodes.loc[nodes.streets_count==2].osmid.unique())
