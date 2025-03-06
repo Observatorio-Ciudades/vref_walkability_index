@@ -12,6 +12,31 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
+def get_boeing_network(zone_blocks,nodes,edges,buff):
+    '''
+
+    '''
+
+    # Usar unary_union para fusionar todos los polígonos en una geometría única
+    poligono_exterior = zone_blocks.union_all().convex_hull.buffer(buff)
+
+    # Crear un nuevo GeoDataFrame con el polígono exterior
+    zona = gpd.GeoDataFrame(geometry=gpd.GeoSeries([poligono_exterior]), crs=zone_blocks.crs)
+    zona = zona.to_crs('epsg:4326')
+
+    # Filtrar los edges de boeing de la zona
+    zone_boeing_edges = gpd.sjoin(edges, zona, predicate='intersects')
+    zone_boeing_edges = zone_boeing_edges.drop(['index_right'], axis=1)
+
+    # Obtener los nodos que corresponden a los edges filtrados
+    filtered_node_ids = set(zone_boeing_edges['from']).union(set(zone_boeing_edges['to']))
+
+    # Filtrar los nodos de boeing de la zona
+    zone_boeing_nodes = nodes[nodes['ID'].isin(filtered_node_ids)]
+
+    return zone_boeing_nodes,zone_boeing_edges
+
+
 def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:32618'):
 	"""
 	Create a network based on nodes and edges without unique ids and to - from attributes.
