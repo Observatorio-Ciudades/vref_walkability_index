@@ -902,7 +902,8 @@ def voronoi_points_within_aoi(area_of_interest, points, points_id_col, admissibl
 
 		# Add nodes ID data to voronoi polygons
 		unbounded_voronois = gpd.sjoin(unbounded_voronois,pois[[points_id_col,'geometry']])
-		
+		unbounded_voronois = unbounded_voronois.drop(columns=['index_right'])
+        
 		# Clip voronoi with boundary
 		bounded_voronois = gpd.overlay(df1=unbounded_voronois, df2=aoi, how='intersection')
 
