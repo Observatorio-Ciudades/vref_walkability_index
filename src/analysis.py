@@ -7,9 +7,10 @@ from shapely.geometry import LineString, Point, Polygon, MultiLineString
 import momepy
 import numpy as np
 from scipy.spatial import Voronoi
+from shapely.strtree import STRtree
+import matplotlib.pyplot as plt
 import pandas as pd
 from shapely import ops
-
 
 
 def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, buff:int):
@@ -47,7 +48,6 @@ def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edg
 
     # Filtrar los nodos de boeing de la zona
     zone_boeing_nodes = nodes[nodes['ID'].isin(filtered_node_ids)]
-
 
     return zone_boeing_nodes,zone_boeing_edges
 
@@ -228,8 +228,8 @@ def network_from_tessellation_ig_rtree(blocks:gpd.GeoDataFrame):
         tessellation_gdf (gpd.GeoDataFrame): Morphological tessellations build from the polygons
     '''
 
-    ## Preliminars
-
+    ## PRELIMINARS
+    # Copy to avoid editing original GeoDataFrames
     buildings = blocks.copy()
     id_name = buildings.index.name
     buildings = blocks.reset_index()
@@ -288,13 +288,11 @@ def network_from_tessellation_ig_rtree(blocks:gpd.GeoDataFrame):
     new_buildings = unified_gdf.reset_index(drop=True).copy()
     
     ## TESELLATIONS
-
     # Calculate morphological tessellations
     limit = momepy.buffered_limit(new_buildings, buffer=50)
     tessellation_gdf = momepy.Tessellation(new_buildings, unique_id=id_name, limit=limit, shrink=0.1, segment=0.1).tessellation
 
     ## NETWORK
-
     print('\nConforming network...\n')
     # # Simplify the tesellations
     # tessellation_gdf['geometry'] = tessellation_gdf['geometry'].simplify(tolerance=0.2, preserve_topology=True)
@@ -374,6 +372,10 @@ def elevation_DEM(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, DEM_path):
         nodes (gpd.GeoDataFrame): Network's nodes with raster elevation
         edges (gpd.GeoDataFrame): Network's edges with lenght, grade and grade_abs
     '''
+
+    # Copy to avoid editing original GeoDataFrames
+    nodes = nodes.copy()
+    edges = edges.copy()
     # Organice nodes and edges
     nodes = nodes.to_crs('epsg:4326')
     edges = edges.to_crs('epsg:4326')
@@ -404,6 +406,8 @@ def voronoi_polygons(nodes:gpd.GeoDataFrame):
         voronoi_gdf (gpd.GeoDataFrame): Voronoi polygons
     '''
 
+    # Copy to avoid editing original GeoDataFrames
+    nodes = nodes.copy()
     # Extract the coordinates of the points
     points = np.array(nodes.geometry.apply(lambda p: (p.x, p.y)).tolist())
     # Generate Voronoi polygons
@@ -439,6 +443,11 @@ def assing_blocks_attribute_to_voronoi(blocks:gpd.GeoDataFrame, voronoi:gpd.GeoD
     Returns:
         voronoi (gpd.GeoDataFrame): Voronoi polygons with the corresponding proportion of the desired attribute
     '''
+
+    # Copy to avoid editing original GeoDataFrames
+    blocks = blocks.copy()
+    voronoi = voronoi.copy()
+    
     index_voronoi = voronoi.index.name
     index_blocks = blocks.index.name
     blocks = blocks.reset_index()
@@ -557,6 +566,7 @@ def network_from_tessellation(gdf, crs, consolidate=(True,10)):
 
     return nodes, edges
 
+
 def create_unique_edge_id(edges, order='uvkey'):
     """
     Create a unique edge_id based on the 'u', 'v' and 'key' columns of the edges GeoDataFrame.
@@ -583,6 +593,7 @@ def create_unique_edge_id(edges, order='uvkey'):
     edges['key'] = edges['key'].astype('int')
 
     return edges
+
 
 def lines_connect(line1, line2):
     """ This function takes as input two lines (From a MultiLineString) and checks if they connect properly,
@@ -683,6 +694,7 @@ def multilinestring_to_linestring(row):
         # Update the row's geometry with the resulting LineString
         row['geometry'] = LineString(all_coords)
         return row
+
 
 def remove_redundant_nodes(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame):
     """
@@ -850,6 +862,7 @@ def resolve_duplicates_indexes(gdf, crs):
     # Return the modified DataFrame sorted by the index
     return gdf
 
+
 def voronoi_points_within_aoi(area_of_interest, points, points_id_col, admissible_error=0.01, projected_crs="EPSG:6372"):
 	""" Creates voronoi polygons within a given area of interest (aoi) from n given points.
 	Args:
@@ -923,3 +936,193 @@ def voronoi_points_within_aoi(area_of_interest, points, points_id_col, admissibl
 
 	# Out of the while loop:
 	return voronois_gdf
+
+
+def epanechnikov_kernel(dist, bandwidth):
+    #Originaly located in utils/analysis.py
+    """
+    This function implements the Epanechnikov kernel for kernel density estimation, defining the weight of a point based on its distance from the center.
+    
+    Args:
+        dist (float): The distance from the center of the kernel to the point.
+        bandwidth (float): The bandwidth of the kernel, which defines the radius of influence.
+    
+    Returns:
+        float: The weight of the point based on the Epanechnikov kernel function.
+    """
+    return 0.75 * (1 - (dist / bandwidth) ** 2) if dist < bandwidth else 0
+
+
+def quartic_kernel(dist, bandwidth):
+    #Originaly located in utils/analysis.py
+    """
+    This function implements the Quartic (biweight) kernel for kernel density estimation, 
+    defining the weight of a point based on its distance from the center.
+
+    Args:
+        dist (float): The distance from the center of the kernel to the point.
+        bandwidth (float): The bandwidth of the kernel, which defines the radius of influence.
+    
+    Returns:
+        float: The weight of the point based on the Quartic kernel function.
+    """
+    return (15 / 16) * ((1 - (dist / bandwidth) ** 2) ** 2) if dist < bandwidth else 0
+
+
+def calculate_density(points, bandwidth, pixel_size, kernel_shape):
+    #Originaly located in utils/analysis.py
+    '''
+    Calculate a density map for a set of points using kernel density estimation (KDE).
+
+    This function computes the density of points within a geographic area based on a selected
+    kernel function, bandwidth, and grid resolution. It returns the updated points with
+    assigned densities, the density grid, and the area boundaries.
+
+    Args:
+    points (gpd.GeoDataFrame): A GeoDataFrame containing the points for density calculation. Must 
+        include a 'geometry' column with Point geometries.
+    bandwidth (float): The radius of influence for the kernel function. Determines the area of effect for each point.
+    pixel_size (float): The size of each grid cell in the output density map. Defines the resolution of the density grid.
+    kernel_shape (str): The type of kernel function to use for density calculation. Options are:
+        - 'quartic': Quartic (biweight) kernel
+        - 'epanechnikov': Epanechnikov kernel
+
+    Returns:
+    points (gpd.GeoDataFrame): The input GeoDataFrame with an additional column 'density', indicating 
+        the density value for each point.
+    density (np.ndarray): A 2D NumPy array representing the density grid, with rows and columns corresponding 
+        to the y and x coordinates of the grid.
+    x_min (float): The minimum x-coordinate of the area boundary.
+    y_min (float): The minimum y-coordinate of the area boundary.
+    x_max (float): The maximum x-coordinate of the area boundary.
+    y_max (float): The maximum y-coordinate of the area boundary.
+    '''
+
+    # Copy to avoid editing original GeoDataFrames
+    points = points.copy()
+    # Select the kernel
+    kernel_list = {'quartic': quartic_kernel, 'epanechnikov': epanechnikov_kernel}
+    if kernel_shape not in kernel_list.keys():
+        raise KeyError(f'Invalid kernel. Available kernels are {[i for i in kernel_list.keys()]}')
+    kernel_function = kernel_list[kernel_shape]
+
+    # Get the limits of the area of the points
+    x_min, y_min, x_max, y_max = points.total_bounds
+
+    # Create grid of points for calculation
+    x_grid = np.arange(x_min, x_max, pixel_size)
+    y_grid = np.arange(y_min, y_max, pixel_size)
+    density = np.zeros((y_grid.size, x_grid.size))
+
+    # Create a STRtree for quick neighbor search
+    tree = STRtree(points.geometry)
+
+    # Calculate the density in each grid cell
+    for i, x in enumerate(x_grid):
+        for j, y in enumerate(y_grid):
+            cell_center = Point(x, y)
+            # Obtener índices de los vecinos
+            neighbor_indices = tree.query(cell_center.buffer(bandwidth))
+            density_value = 0
+            for idx in neighbor_indices:
+                neighbor_geom = points.geometry.iloc[idx]  # Get the geometry of the index
+                dist = cell_center.distance(neighbor_geom)
+                density_value += kernel_function(dist, bandwidth)
+            density[j, i] = density_value
+
+    points['density'] = 0.0
+
+    # Create a GeoDataFrame for the mesh
+    mesh_points = []
+    density_values = []
+    for i, x in enumerate(x_grid):
+        for j, y in enumerate(y_grid):
+            mesh_points.append(Point(x, y))
+            density_values.append(density[j, i])
+
+    mesh_gdf = gpd.GeoDataFrame({'geometry': mesh_points, 'density': density_values}, crs=points.crs)
+
+    # Assign density values to the original GeoDataFrame
+    for i, point in points.iterrows():
+        nearest_cell = mesh_gdf.geometry.distance(point.geometry).idxmin()
+        points.at[i, 'density'] = mesh_gdf.at[nearest_cell, 'density']
+
+    # Return points and density, plus limits for use outside the function
+    return points, density, x_min, y_min, x_max, y_max
+
+
+def plot_density(points, density):
+    #Originaly located in utils/analysis.py
+    """
+    This function plots the density of points on a 2D grid using a heatmap representation.
+
+    Args:
+        points (gpd.GeoDataFrame): A GeoDataFrame containing the points for which density is calculated.
+            Must include a 'geometry' column with Point geometries.
+        density (np.ndarray): A 2D NumPy array representing the density grid, with rows and columns corresponding 
+            to the y and x coordinates of the grid.
+    
+    Returns:
+        None: Displays a heatmap of the density.
+    """
+
+    # Create the figure y and axis
+    fig, ax = plt.subplots(figsize=(8, 8))
+    
+    # Show the density matrix as an image
+    x_min, y_min, x_max, y_max = points.total_bounds
+    cax = ax.imshow(density, cmap='hot', extent=[x_min, x_max, y_min, y_max], origin='lower')
+    
+    # Add a color bar
+    cbar = fig.colorbar(cax, ax=ax, orientation='vertical', shrink=0.6)  # Ajusta el valor de shrink según sea necesario
+    cbar.set_label('Density')
+    
+    # Add titles and tags
+    ax.set_title('Kernel Density Estimation')
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    
+    # Show the graph
+    plt.show()
+
+
+def calcular_entropia(osmid, n_land_use, porcentaje_usos_edges, categories):
+    #Originaly located in utils/analysis.py
+    '''
+    Calculates entropy for a specific element identified by its osmid,
+    considering the number of land use categories and the area proportions
+    associated with those categories.
+
+    Args:
+        osmid (int or str): Unique identifier of the element for which entropy is calculated.
+        n_land_use (pd.Series): Series indexed by osmid containing the number of land use categories 
+            (n in the formula) for each element.
+        porcentaje_usos_edges (pd.Series): MultiIndex Series indexed by (osmid, land_use) containing 
+            the area proportions (P_k) of each land use category associated with an element.
+        categories (list): List of land use categories to consider in the entropy calculation.
+
+    Returns:
+        entropia (float): Calculated entropy value:
+            - Returns 1 if there is no data on categories (total uncertainty).
+            - Returns 0 if there is only one category (complete certainty).
+            - Calculates entropy using the given formula for all other cases.
+    '''
+    # Number of categories (n)
+    n = len(categories)
+
+    # Analyze the categories for each osmid
+    n_osmid = n_land_use.get(osmid, 1)  # Avoid division by 0 by using a default value
+    if n_osmid == 0:
+        return 1  # Assign entropy of 1 if the category is uncertain
+    if n_osmid == 1:
+        return 0  # If there is only one category, entropy is 0
+    
+    # Get the area percentage (A_k/A_T) of each use for this osmid
+    pk_values = porcentaje_usos_edges.loc[osmid]
+    if isinstance(pk_values, pd.Series):
+        pk_values = pk_values.values  # Convert to array if there is only one entry
+
+    # Calculate entropy
+    entropia = (-1 / np.log(n)) * np.sum([p * np.log(p) for p in pk_values if p > 0])
+
+    return entropia
