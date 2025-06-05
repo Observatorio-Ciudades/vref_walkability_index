@@ -849,3 +849,77 @@ def resolve_duplicates_indexes(gdf, crs):
     
     # Return the modified DataFrame sorted by the index
     return gdf
+
+def voronoi_points_within_aoi(area_of_interest, points, points_id_col, admissible_error=0.01, projected_crs="EPSG:6372"):
+	""" Creates voronoi polygons within a given area of interest (aoi) from n given points.
+	Args:
+		area_of_interest (geopandas.GeoDataFrame): GeoDataFrame with area of interest (Determines output extents).
+		points (geopandas.GeoDataFrame): GeoDataFrame with points of interest.
+		points_id_col (str): Name of points ID column (Will be assigned to each resulting voronoi polygon)
+		admissible_error (int, optional): Percentage of error (difference) between the input area (area_of_interest) and output area (dissolved voronoi polygons).
+		projected_crs (str, optional): string containing projected crs to be used depending on area of interest. Defaults to "EPSG:6372".
+	Returns:
+		geopandas.GeoDataFrame: GeoDataFrame with voronoi polygons (each containing the point ID it originated from) extending all up to the area of interest extent.
+	"""
+
+	# Set area of interest and points of interest for voronoi analysis to crs:6372 (Proyected)
+	aoi = area_of_interest.to_crs(projected_crs)
+	pois = points.to_crs(projected_crs)
+
+    # Distance is a number used to create a buffer around the polygon and coordinates along a bounding box of that buffer.
+    # Starts at 100 (works for smaller polygons) but will increase itself automatically until the diference between the area of 
+    # the voronoi polygons created and the area of the aoi is less than the admissible_error.
+	distance = 100
+
+    # Goal area (Area of aoi)
+	# Objective is that diff between sum of all voronois polygons and goal area is within admissible error.
+	goal_area_gdf = aoi.copy()
+	goal_area_gdf['area'] = goal_area_gdf.geometry.area
+	goal_area = goal_area_gdf['area'].sum()
+	
+	# Kick start while loop by creating area_diff 
+	area_diff = admissible_error + 1 
+	while area_diff > admissible_error:
+		# Create a rectangular bound for the area of interest with a {distance} buffer.
+		polygon = aoi['geometry'].unique()[0]
+		bound = polygon.buffer(distance).envelope.boundary
+		
+		# Create points along the rectangular boundary every {distance} meters.
+		boundarypoints = [bound.interpolate(distance=d) for d in range(0, np.ceil(bound.length).astype(int), distance)]
+		boundarycoords = np.array([[p.x, p.y] for p in boundarypoints])
+		
+		# Load the points inside the polygon
+		coords = np.array(pois.get_coordinates())
+		
+		# Create an array of all points on the boundary and inside the polygon
+		all_coords = np.concatenate((boundarycoords, coords))
+		
+		# Calculate voronoi to all coords and create voronois gdf (No boundary)
+		vor = Voronoi(points=all_coords)
+		lines = [sh.geometry.LineString(vor.vertices[line]) for line in vor.ridge_vertices if -1 not in line]
+		polys = sh.ops.polygonize(lines)
+		unbounded_voronois = gpd.GeoDataFrame(geometry=gpd.GeoSeries(polys), crs=projected_crs)
+
+		# Add nodes ID data to voronoi polygons
+		unbounded_voronois = gpd.sjoin(unbounded_voronois,pois[[points_id_col,'geometry']])
+		unbounded_voronois = unbounded_voronois.drop(columns=['index_right'])
+        
+		# Clip voronoi with boundary
+		bounded_voronois = gpd.overlay(df1=unbounded_voronois, df2=aoi, how='intersection')
+
+		# Change back crs
+		voronois_gdf = bounded_voronois.to_crs('EPSG:4326')
+
+		# Area check for while loop
+		voronois_area_gdf = voronois_gdf.to_crs(projected_crs)
+		voronois_area_gdf['area'] = voronois_area_gdf.geometry.area
+		voronois_area = voronois_area_gdf['area'].sum()
+		area_diff = ((goal_area - voronois_area)/(goal_area))*100
+		if area_diff > admissible_error:
+			print(f'Error = {round(area_diff,2)}%. Repeating process.')
+			distance = distance * 10
+		else:
+			print(f'Error = {round(area_diff,2)}%. Admissible.')
+
+	# Out of the while loop:
+	return voronois_gdf
