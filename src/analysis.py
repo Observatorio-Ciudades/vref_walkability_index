@@ -52,8 +52,8 @@ def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edg
 
     return zone_boeing_nodes,zone_boeing_edges
 
-# Used in notebook 01_PL_03a_Function_network_from_tessellation.ipynb
 # Used in notebook 01_PL_04_Combine_networks.ipynb
+# Used in function network_from_tessellation()
 def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:32618', expand_coords=(False, 10)):
     
     """
@@ -115,151 +115,6 @@ def network_entities(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, crs='epsg:3
     nodes = nodes.set_index('osmid')
 
     return nodes, edges
-
-# Previously used in notebook 01_PL_03_Tessellation_network.ipynb, now commented
-# NOT USED IN ANY FUNCTION NOR NOTEBOOK NOR SCRIPT
-def network_from_tessellation_ig_rtree(blocks:gpd.GeoDataFrame):
-    '''
-    Function to create a network based on the tessellations conformed from a set of polygons
-
-    Args:
-        blocks (gpd.GeoDataFrame): Blocks uniquely indexed from which the tessellations will be performed
-    Returns:
-        nodes_consolidated (gpd.GeoDataFrame): Nodes of the network representing the intersections
-        edges_consolidated (gpd.GeoDataFrame): Edges of the network representing conections
-        tessellation_gdf (gpd.GeoDataFrame): Morphological tessellations build from the polygons
-    '''
-
-    ## PRELIMINARS
-    # Copy to avoid editing original GeoDataFrames
-    buildings = blocks.copy()
-    id_name = buildings.index.name
-    buildings = blocks.reset_index()
-    # Create dictionary mapping IDs to indexes
-    index_to_id = {index_: id_ for index_, id_ in enumerate(buildings[id_name])}
-    print('Analyzing touching polygons...\n')
-    # Create spatial index
-    spatial_index = index.Index()
-    for pos, poly in enumerate(buildings.geometry):
-        spatial_index.insert(pos, poly.bounds)
-    # Create an empty graph
-    G = ig.Graph()
-    G.add_vertices(len(buildings))
-    # Add edges if polygons touch using the spatial index
-    edges = []
-    for i, poly1 in enumerate(buildings.geometry):
-        possible_matches_index = list(spatial_index.intersection(poly1.bounds))
-        for j in possible_matches_index:
-            if i != j and poly1.touches(buildings.geometry.iloc[j]):
-                edges.append((i, j))
-    G.add_edges(edges)
-    # Find connected components
-    clusters = G.connected_components()
-    # Combine the polygons within each component
-    partial_polygons = []
-    partial_polygons_index = []
-    for cluster in clusters:
-        combined_poly = sh.ops.unary_union([buildings.geometry.iloc[idx] for idx in cluster])
-        partial_polygons_index.append(cluster[0])
-        if combined_poly.geom_type == 'Polygon':
-            partial_polygons.append(combined_poly)
-        elif combined_poly.geom_type == 'MultiPolygon':
-            partial_polygons.append(sh.ops.unary_union([poly.buffer(0.05) for poly in combined_poly.geoms]))
-    # Create a new GeoDataFrame with the combined polygons
-    partial_unified_gdf = gpd.GeoDataFrame(index=partial_polygons_index,geometry=partial_polygons, crs=buildings.crs)
-    partial_new_buildings = partial_unified_gdf.reset_index().copy()
-    partial_new_buildings[id_name] = partial_new_buildings['index'].replace(index_to_id)
-    # Create a negative buffer to avoid remaining connected polygons
-    partial_new_buildings['geometry'] = partial_new_buildings.buffer(-1)
-    # Simplify geometry
-    partial_new_buildings['geometry'] = partial_new_buildings['geometry'].simplify(tolerance=1, preserve_topology=True)
-    # Correct the polygons
-    polygons = []
-    polygons_index = []
-    for index_, poly in zip(partial_new_buildings[id_name],partial_new_buildings.geometry):
-        if poly.geom_type == 'Polygon':
-            polygons.append(poly)
-            polygons_index.append(index_)
-        elif poly.geom_type == 'MultiPolygon':
-            for i,poly1 in enumerate(poly.geoms):
-                polygons.append(poly1)
-                polygons_index.append(f'{index_}_{i}')
-    # Create a new GeoDataFrame with the combined polygons
-    unified_gdf = gpd.GeoDataFrame(index=polygons_index,geometry=polygons, crs=partial_new_buildings.crs)
-    unified_gdf[id_name] = unified_gdf.index
-    new_buildings = unified_gdf.reset_index(drop=True).copy()
-    
-    ## TESELLATIONS
-    # Calculate morphological tessellations
-    limit = momepy.buffered_limit(new_buildings, buffer=50)
-    tessellation_gdf = momepy.Tessellation(new_buildings, unique_id=id_name, limit=limit, shrink=0.1, segment=0.1).tessellation
-
-    ## NETWORK
-    print('\nConforming network...\n')
-    # # Simplify the tesellations
-    # tessellation_gdf['geometry'] = tessellation_gdf['geometry'].simplify(tolerance=0.2, preserve_topology=True)
-    # Extract the lines and points conforming the polygons
-    points_list = []
-    lines_list = []
-    for idx, tessellation in tessellation_gdf.iterrows():
-        exterior_coords = tessellation.geometry.exterior.coords
-        for i in range(len(exterior_coords) - 1):
-            point = Point(exterior_coords[i])
-            points_list.append(point)
-            line = LineString([exterior_coords[i], exterior_coords[i + 1]])
-            lines_list.append(line)
-    points_gdf = gpd.GeoDataFrame(geometry=points_list,crs=tessellation_gdf.crs).drop_duplicates(['geometry'])
-    lines_gdf = gpd.GeoDataFrame(geometry=lines_list,crs=tessellation_gdf.crs).drop_duplicates()
-    # Organize the points and lines to a proper network structure
-    nodes, edges = network_entities(points_gdf, lines_gdf, crs=buildings.crs)
-    # Create a graph entity with osmnx
-    G = ox.graph_from_gdfs(nodes, edges)
-    # Simplifies and consolidate the network
-    G_simplified = ox.simplification.simplify_graph(G)
-    G_consolidated = ox.simplification.consolidate_intersections(G_simplified, tolerance=5)
-    nodes_consolidated, edges_consolidated = ox.graph_to_gdfs(G_consolidated)
-    # Organize the nodes
-    nodes_consolidated = nodes_consolidated[['geometry']]
-    nodes_consolidated = nodes_consolidated.reset_index()
-    nodes_consolidated = nodes_consolidated.set_crs(buildings.crs,allow_override=True)
-    # Organize the edges
-    edges_consolidated = edges_consolidated[['geometry']]
-    edges_consolidated = edges_consolidated.reset_index()
-    # edges_consolidated['id'] = edges_consolidated.index
-    edges_consolidated = edges_consolidated.set_crs(buildings.crs, allow_override=True)
-
-    # Elminate the duplicate edges
-    def create_edge_key(row):
-        # Function to create a key that does not distinguish the direction of the edge
-        return tuple(sorted([row['u'], row['v']]))
-    
-    # Create a new 'edge_key' column to identify unique edges
-    edges_consolidated['edge_key'] = edges_consolidated.apply(create_edge_key, axis=1)
-    # Remove duplicates based on 'edge_key'
-    edges_consolidated = edges_consolidated.drop_duplicates(subset='edge_key')
-    # Remove the 'edge_key' column as it is not necessary in the final result
-    edges_consolidated = edges_consolidated.drop(columns=['edge_key'])
-
-    # Re simplify the network
-    nodes_consolidated['x'] = nodes_consolidated['geometry'].x
-    nodes_consolidated['y'] = nodes_consolidated['geometry'].y
-    nodes_consolidated = nodes_consolidated.set_index(['osmid'])
-    edges_consolidated = edges_consolidated.set_index(['u','v','key'])
-    G = ox.graph_from_gdfs(nodes_consolidated, edges_consolidated)
-    G_simplified = ox.simplification.simplify_graph(G)
-    nodes_consolidated, edges_consolidated = ox.graph_to_gdfs(G_simplified)
-
-    # Organize the nodes
-    nodes_consolidated = nodes_consolidated[['geometry']]
-    nodes_consolidated = nodes_consolidated.reset_index()
-    nodes_consolidated = nodes_consolidated.set_crs(buildings.crs,allow_override=True)
-    # Organize the edges
-    edges_consolidated = edges_consolidated[['geometry']]
-    edges_consolidated = edges_consolidated.reset_index()
-    # edges_consolidated['id'] = edges_consolidated.index
-    edges_consolidated = edges_consolidated.set_crs(buildings.crs, allow_override=True)
-
-    return nodes_consolidated, edges_consolidated, tessellation_gdf#, G, G_simplified
 
 # Used in notebook 02_PV_01_Slope_DEM.ipynb
 def elevation_DEM(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, DEM_path): 
@@ -458,7 +313,7 @@ def network_from_tessellation(gdf, crs, consolidate=(True,10)):
         nodes = nodes.rename(columns={'osmid_original':'osmid'})
         nodes = nodes.set_index('osmid')
         edges = edges.reset_index()
-        edges = edges.drop(columns=['u','v','index'])
+        edges = edges.drop(columns=['u','v'])
         edges = edges.rename(columns={'u_original':'u',
         'v_original':'v'})
         edges = edges.set_index(['u','v','key'])
