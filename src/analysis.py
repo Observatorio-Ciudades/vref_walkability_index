@@ -152,7 +152,6 @@ def elevation_DEM(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, DEM_path):
     return nodes, edges
 
 # Used in notebook 02_PV_02_Population.ipynb
-# Used in notebook 02_PV_02b_Population (voronoi_points_within_aoi()).ipynb
 def assing_blocks_attribute_to_voronoi(blocks:gpd.GeoDataFrame, voronoi:gpd.GeoDataFrame, attribute_column:str):
     '''
     Function to assing a block's attribute to Voronoi polygons based on the intersection of areas
@@ -484,7 +483,7 @@ def resolve_duplicates_indexes(gdf, crs):
     # Return the modified DataFrame sorted by the index
     return gdf
 
-# Used in notebook 02_PV_02b_Project_network_Voronois.ipynb
+# Used in notebook 02_PV_02_Population.ipynb
 def voronoi_points_within_aoi(area_of_interest, points, points_id_col, admissible_error=0.01, projected_crs="EPSG:6372"):
 	""" Creates voronoi polygons within a given area of interest (aoi) from n given points.
 	Args:
