@@ -152,42 +152,6 @@ def elevation_DEM(nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, DEM_path):
     return nodes, edges
 
 # Used in notebook 02_PV_02_Population.ipynb
-def voronoi_polygons(nodes:gpd.GeoDataFrame):
-    '''
-    Function to create Voronoi polygons from a set of nodes
-
-    Args:
-        nodes (gpd.GeoDataFrame): Nodes stored in a GeoDataFrame indexed by an unique id column
-
-    Returns:
-        voronoi_gdf (gpd.GeoDataFrame): Voronoi polygons
-    '''
-
-    # Copy to avoid editing original GeoDataFrames
-    nodes = nodes.copy()
-    # Extract the coordinates of the points
-    points = np.array(nodes.geometry.apply(lambda p: (p.x, p.y)).tolist())
-    # Generate Voronoi polygons
-    vor = Voronoi(points)
-    polygons = []
-    for region in vor.regions:
-        if not -1 in region:
-            polygon = [vor.vertices[i] for i in region]
-            polygons.append(Polygon(polygon))
-    voronoi_gdf = gpd.GeoDataFrame({'geometry': polygons},crs=nodes.crs)
-    # Create the polygon that encloses all the points
-    poligono_exterior = nodes.union_all().convex_hull
-    # Filter polygons according to the analysis area
-    voronoi_gdf = voronoi_gdf[voronoi_gdf.geometry.within(poligono_exterior)]
-    # Set the intersection ID to each Voronoi polygon
-    # voronoi_gdf = gpd.sjoin(voronoi_gdf,nodes[[id,'geometry']],how='left',predicate='intersects').drop(['index_right'],axis=1)
-    voronoi_gdf = gpd.sjoin(voronoi_gdf, nodes[['geometry']], how='left', predicate='intersects')
-    # Index the voronoi geodataframe by the same index of the entry nodes
-    voronoi_gdf = voronoi_gdf.set_index(nodes.index.name)
-
-    return voronoi_gdf
-
-# Used in notebook 02_PV_02_Population.ipynb
 # Used in notebook 02_PV_02b_Population (voronoi_points_within_aoi()).ipynb
 def assing_blocks_attribute_to_voronoi(blocks:gpd.GeoDataFrame, voronoi:gpd.GeoDataFrame, attribute_column:str):
     '''
