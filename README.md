@@ -32,8 +32,11 @@ The folder structure of this project is as follows:
 │                             process performed in this project.
 │
 ├── notebooks              <- Jupyter notebooks where all the geoprocessing is executed. 
-│                             Naming convention is a number (for ordering) followed by an abbreviation:
-│                             PL: Preliminars, PV: Prhysical variables, BT: Betas, WI: Walkability index
+│                             Naming convention is a number for ordering followed by an abbreviation:
+│                                 - PL: Preliminar geoprocessing.
+│                                 - PV: Creation of the physical variables.
+│                                 - BT: Estimation of perception variables (betas).
+│                                 - WI: Calculation of the Walkability Index.
 │
 └── src                    <- Source code for use in this project.
     ├── __init__.py        <- Makes src a Python module
