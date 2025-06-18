@@ -3,37 +3,18 @@
   <img src="data/output/image/TEC_logo.png" alt="TEC logo" width="238" height="66">
 </div>
 
-<!-- # Assessment of Simultaneous Accessibility Walking Index (SAWI) to essential opportunities
+# From accessibility measures to the understanding walkability
 
 ## Description
 
-This repository contains the notebooks, sripts, input variables, and output figures that were used in the paper "Assessment of Simultaneous Accessibility Walking Index (SAWI) to essential opportunities", by Sergio M. Miranda-Parra, and Juan P. Ospina.
+This repository contains the notebooks, scripts, input and output data that were used in the project "From accessibility measures to the understanding walkability", founded by the VOLVO Research Foundation and developed by EAFIT University and TEC Universiry.
 
-**"Assessment of Simultaneous Accessibility Walking Index (SAWI) to essential opportunities"**
-
-Sergio M. Miranda-Parra<sup>1</sup>*, Juan P. Ospina<sup>1</sup>
-
-<sup>1</sup>Research in Spatial Economics (RiSE-Group), School of Applied Sciences and Engineering, Universidad EAFIT, Medellin, Colombia.
-
-*Corresponding author: smmirandap@eafit.edu.co
-
-## Abstract
-
-Latin American and the Caribbean (LAC) cities exhibit rapid urban urbanization processes, which has led to inadequate planning, inequity, and segregation throughout territories. Accessibility, which is regarded as the ability to reach opportunities, should be employed to guide urban planning decisions. However, several LAC cities lack diagnostic tools and technical capacities to support decision-making processes aimed at ensuring equitable access. We propose two indices that reflect the simultaneous accessibility of pedestrians to different types of opportunities, which can be represented at the microscale (the simultaneous accessibility walking index, SAWI) and the macroscale (the metropolitan simultaneous accessibility walking index, M-SAWI). On the one hand, the SAWI estimates can highlight zones within a given city where there is a scarcity of opportunities and inequitable access. On the other hand, the M-SAWI estimates reveal that the simultaneous accessibility in cities decreases with increasing city size, suggesting that cities should shift to a model of clustered small urban areas. By analyzing the index results in conjunction with the spatial distributions of opportunities and populations, policymakers can adopt a proactive stance in reducing inequality and enhancing access for all people. -->
-
-# Estructura para proyectos
-
-_Estructura flexible para proyectos de ciencia de datos._
-
-
-### Start a nwe project:
+## Start a new project:
 ------------
 
     git clone This repo
     
-
-
-### Project structure
+## Project structure
 ------------
 
 The folder structure of this project is as follows:
