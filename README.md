@@ -3,11 +3,13 @@
   <img src="data/output/image/TEC_logo.png" alt="TEC logo" width="238" height="66">
 </div>
 
-# From accessibility measures to the understanding walkability
+# From accessibility measures to the understanding of walkability
 
 ## Description
 
-This repository contains the notebooks, scripts, input and output data that were used in the project "From accessibility measures to the understanding walkability", founded by the VOLVO Research Foundation and developed by EAFIT University and TEC Universiry.
+This repository contains the notebooks, scripts, input and output data that were used in the project "From accessibility measures to the understanding of walkability", founded by the VOLVO Research Foundation and developed by EAFIT University and TEC University.
+
+This project explores the gap between accessibility and actual walking behavior in Latin American cities. While walking plays a major role in everyday mobility, traditional planning often overlooks the real experiences of pedestrians, especially in unequal and unsafe urban environments. We developed a Walkability Index (WI) that combines objective geospatial data (population density, intersection density, land use mix, vegetation, slope, and sidewlaks) with local, perception-based insights from pedestrians. Applied to neighborhoods in Medellín and Guadalajara, this approach offers a more accurate view of what makes a street truly walkable.
 
 ## Start a new project:
 ------------
@@ -32,7 +34,7 @@ The folder structure of this project is as follows:
 │                             process performed in this project.
 │
 ├── notebooks              <- Jupyter notebooks where all the geoprocessing is executed. 
-│                             Naming convention is a number for ordering followed by an abbreviation:
+│                             Name convention is a number for ordering followed by an abbreviation:
 │                                 - PL: Preliminar geoprocessing.
 │                                 - PV: Creation of the physical variables.
 │                                 - BT: Estimation of perception variables (betas).
