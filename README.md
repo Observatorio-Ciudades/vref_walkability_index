@@ -3,26 +3,41 @@
   <img src="data/output/image/TEC_logo.png" alt="TEC logo" width="238" height="66">
 </div>
 
-# From accessibility measures to the understanding of walkability
+# Walkability Index Estimation – Project Repository
 
-## Description
+Project Title: From Accessibility Measures to the Understanding of Walkability
 
-This repository contains the notebooks, scripts, input and output data that were used in the project "From accessibility measures to the understanding of walkability", founded by the VOLVO Research Foundation and developed by EAFIT University and TEC University.
+Partners: Universidad EAFIT (Colombia) & Tecnológico de Monterrey (Mexico)
 
-This project explores the gap between accessibility and actual walking behavior in Latin American cities. While walking plays a major role in everyday mobility, traditional planning often overlooks the real experiences of pedestrians, especially in unequal and unsafe urban environments. We developed a Walkability Index (WI) that combines objective geospatial data (population density, intersection density, land use mix, vegetation, slope, and sidewlaks) with local, perception-based insights from pedestrians. Applied to neighborhoods in Medellín and Guadalajara, this approach offers a more accurate view of what makes a street truly walkable.
+Funding: Volvo Research and Educational Foundations (VREF)
 
-## Start a new project:
-------------
+## Overview
 
-    git clone This repo
-    
-## Project structure
-------------
+This repository contains the scripts, Jupyter notebooks, sample data, and results developed as part of the research project From Accessibility Measures to the Understanding of Walkability. The project aims to bridge the gap between accessibility (how close services are) and actual pedestrian experience (whether people actually walk), particularly in complex and unequal urban contexts like those found in Latin America. 
 
-The folder structure of this project is as follows:
+Although walking remains one of the most common modes of transport in cities like Medellín and Guadalajara, traditional planning tools rarely capture how people perceive walking conditions. This project proposes a Walkability Index (WI) that integrates both objective spatial indicators and subjective perceptions from pedestrians to provide a more nuanced, context-sensitive measurement of walkability.
 
+## What’s in This Repository? 
+
+This repository includes: 
+
+- Scripts and Notebooks used to preprocess data, estimate walkability variables, and calculate the WI. 
+- Input Data Samples (e.g., population, street network, sidewalk layers, NDVI). 
+- Output Maps and Results from the analysis in Medellín (Colombia) and Guadalajara (Mexico). 
+- Survey structure for perception data collection. 
+- Documentation to replicate or adapt the WI methodology to other cities.
+
+## Repository Structure 
+
+vref_walkability_index
 ```
-├── README.md              <- The top-level README for developers using this project.
+├── README.md              <- Project description and instructions.
+│
+├── results                <- WI maps and beta coefficient outputs.
+│
+├── survey                 <- Survey structure and perception variables. 
+│
+├── docs                   <- Documentation files (PDF, markdown, references). 
 │
 ├── requirements.txt       <- Python libraries needed to properly execute the project.
 │
@@ -41,12 +56,101 @@ The folder structure of this project is as follows:
 │                                 - WI: Calculation of the Walkability Index.
 │
 └── src                    <- Source code for use in this project.
-    ├── __init__.py        <- Makes src a Python module
+    ├── __init__.py        <- Makes src a Python module.
     │
-    ├── data.py            <- Scripts to download or generate data
+    ├── data.py            <- Scripts to download or generate data.
     │
-    ├── analysis.py        <- Scripts to analyse the data
+    ├── analysis.py        <- Scripts to analyse the data.
     │
-    └── visualization.py   <- Scripts to create exploratory and results oriented visualizations
-
+    └── visualization.py   <- Scripts to create exploratory and results oriented visualizations.
 ```
+## Step-by-Step Methodology 
+
+The Walkability Index is calculated per street segment using the equation:
+
+$$
+WI = \sum_{i = 1}^{n} \beta_i \cdot X_i
+$$
+
+Where, $X_i$ is the normalized value of the physical variable i. $\beta_i$ is the perception-based coefficient from pedestrian responses.
+
+1. Selection of Variables 
+
+    Based on the "3D" framework: Density, Diversity, Design. 
+
+    Variables include: 
+    - Population Density.
+    - Intersection Density.
+    - Land Use Mix (Entropy Index).
+    - Vegetation (NDVI).
+    - Slope.
+    - Sidewalk Availability.
+
+2. Normalization of Physical Variables 
+
+    All variables are normalized using min-max scaling to allow comparison on a common scale. 
+
+3. Collection of Perception Data 
+
+    In each study neighborhood, pedestrians were surveyed about their perception of the walking environment. 
+
+    Responses were used to estimate $\beta$ (beta) coefficients reflecting the importance of each variable to the walking experience. 
+
+4. Mapping and Visualization 
+
+    WI is calculated at the street segment level to reflect local variations in walkability.  
+
+    Results are visualized using maps, charts, and comparative analyses across neighborhoods and cities. 
+
+## Who Can Use This? 
+
+- Urban planners.
+- Transportation researchers.
+- Local governments.
+- Students and academics interested in mobility, urban equity, and GIS.
+
+## How to Use 
+
+1. Clone the repository: 
+
+    git clone https://github.com/Observatorio-Ciudades/vref_walkability_index.git 
+
+2. Install required Python packages: 
+
+    pip install -r requirements.txt 
+
+3. Run the processing pipeline: 
+
+    - Step 1: Prepare the initial network. 
+     (notebooks/01_PL_(…).ipynb) 
+    - Step 2: Process physical variables: map raw data to each segment of the network. 
+     (notebooks/02_PV_(…).ipynb) 
+    - Step 3: Calculate perception variables for each study area. 
+     (notebooks/03_BT_(…).ipynb) 
+    - Step 4: Compute the Walkability Index. 
+    (notebooks/04_04_WI_01_Walkability_Index.ipynb) 
+
+    Replace sample data with your own to apply this model to new cities. 
+
+    The code is modular and adaptable. You can replace the input layers with your city’s data and apply the same methodology to estimate walkability in your own context. Feel free to contribute, fork, or contact the project team for collaborations or implementation support. 
+
+## Contributors 
+
+__Universidad EAFIT__
+
+- Juliana Gómez Aristizábal.  
+- Laura Cuartas Escobar.
+- Karol Vanesa Cuello Ribón.
+- Sara Sofía Quintero Vanegas.
+- Sergio Manuel Miranda Parra.
+- Nicolás Alberto Moreno Reyes.
+- Juan Pablo Ospina Zapata.
+
+__Tecnológico de Monterrey__
+
+- Rossana Valdivia Pallares.
+- Edgar Alán Egurrola Hernández.
+- Alejandro Loya Martínez.
+- Melissa Villalón Guerrero.
+- Sara Rivera Martínez.
+- Ana Carolina Ziga Edgar.
