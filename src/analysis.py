@@ -11,6 +11,7 @@ from shapely.strtree import STRtree
 import matplotlib.pyplot as plt
 import pandas as pd
 from shapely import ops
+from sklearn.preprocessing import OrdinalEncoder
 
 # Used in notebook 01_PL_02_Boeing_network.ipynb
 def get_boeing_network(zone_blocks:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, edges:gpd.GeoDataFrame, buff:int):
@@ -611,7 +612,7 @@ def calculate_density(points, bandwidth, pixel_size, kernel_shape):
     Returns:
     points (gpd.GeoDataFrame): The input GeoDataFrame with an additional column 'density', indicating 
         the density value for each point.
-    density (np.ndarray): A 2D NumPy array representing the density grid, with rows and columns corresponding 
+    mesh_gdf (gpd.GeoDataFrame): GeoDataFrame representing the density grid, with rows and columns corresponding 
         to the y and x coordinates of the grid.
     x_min (float): The minimum x-coordinate of the area boundary.
     y_min (float): The minimum y-coordinate of the area boundary.
@@ -669,7 +670,7 @@ def calculate_density(points, bandwidth, pixel_size, kernel_shape):
         points.at[i, 'density'] = mesh_gdf.at[nearest_cell, 'density']
 
     # Return points and density, plus limits for use outside the function
-    return points, density, x_min, y_min, x_max, y_max
+    return points, mesh_gdf, x_min, y_min, x_max, y_max
 
 # Used in notebook 02_PLV_03_Itersections.ipynb, but it is commented
 def plot_density(points, density):
@@ -747,3 +748,24 @@ def calcular_entropia(osmid, n_land_use, porcentaje_usos_edges, categories):
     entropia = (-1 / np.log(n)) * np.sum([p * np.log(p) for p in pk_values if p > 0])
 
     return entropia
+
+def ordinal_encoding(df, columna, orden):
+    # Inicializar el OrdinalEncoder con handle_unknown  
+    enc = OrdinalEncoder(categories=[orden], handle_unknown='use_encoded_value', unknown_value=np.nan)    
+    
+    columnadf = df[[columna]]
+    # Defino la jerarquía u orden de las categorías, de menor a mayor
+    # (el número que se le asignará a cada uno dependerá de esto: 0 al primer elemento, 1 al segundo, etc...)
+    orden = orden
+
+    # Crear el encoder
+    enc = OrdinalEncoder(categories=[orden])
+
+    # Aplicar el encoding
+    columnanew = enc.fit_transform(columnadf)
+
+    # Pegar la columna al dataframe de elegidas
+    df.loc[:, columna] = columnanew
+    df[columna] = pd.to_numeric(df[columna])
+    
+    return df
